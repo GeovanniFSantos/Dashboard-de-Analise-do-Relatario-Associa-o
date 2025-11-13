@@ -11,20 +11,22 @@ from modulos.config import (
     COLUNA_PEDIDO, 
     COLUNA_CNPJ_CPF, 
     COLUNA_ESPECIFICADOR, 
-    COLUNA_CPF_NOVO_CADASTRO
+    COLUNA_CPF_NOVO_CADASTRO,
+    NOME_ABA_MAP_CPF_CNPJ, # NOVO: Nome da aba de mapeamento
+    COLUNA_CHAVE_CONSOLIDADA, # NOVO: Nome da coluna de chave final
+    COLUNA_NOME_MAP_CONSOLIDACAO
 )
 
 # Função para carregar os dados (usa cache do streamlit para ser mais rápido)
 @st.cache_data
 def carregar_e_tratar_dados(caminho_arquivo):
-    """Lê o arquivo Excel (2 abas), trata colunas e retorna um DataFrame do Pandas."""
+    """Lê o arquivo Excel (2 abas + Mapeamento), trata colunas e retorna um DataFrame do Pandas."""
     try:
         # LER A ABA PRINCIPAL (Relatório)
         df = pd.read_excel(caminho_arquivo, sheet_name=0)
 
-        # LER A ABA DE NOVOS CADASTRADOS (Assumindo a aba se chame "Novos Cadastrados")
+        # LER A ABA DE NOVOS CADASTRADOS
         try:
-            # Lê a aba de Novos Cadastrados do MESMO arquivo
             df_novos = pd.read_excel(caminho_arquivo, sheet_name='Novos Cadastrados')
         except ValueError:
             st.error(f"❌ Erro: A aba 'Novos Cadastrados' não foi encontrada no arquivo '{caminho_arquivo}'.")
@@ -33,12 +35,21 @@ def carregar_e_tratar_dados(caminho_arquivo):
             st.error(f"❌ Erro: O arquivo '{caminho_arquivo}' não foi encontrado.")
             df_novos = pd.DataFrame()
 
+        # LER A ABA DE MAPEAMENTO DE CONSOLIDAÇÃO (NOVO)
+        df_map_completo = pd.DataFrame()
+        try:
+            df_map_completo = pd.read_excel(caminho_arquivo, sheet_name=NOME_ABA_MAP_CPF_CNPJ)
+        except ValueError:
+            st.warning(f"⚠️ Aviso: A aba '{NOME_ABA_MAP_CPF_CNPJ}' não foi encontrada. A consolidação de entidades será feita pelo CPF/CNPJ Limpo.")
+            # Nenhuma ação, apenas continua para a lógica de fallback.
+        except FileNotFoundError:
+             st.warning(f"⚠️ Aviso: O arquivo '{caminho_arquivo}' não foi encontrado.")
+             return pd.DataFrame(), pd.DataFrame() 
+
         # === ETAPA DE TRATAMENTO DE DADOS (DF PRINCIPAL) ===
-        # 1. Tratamento de Colunas Numéricas (removendo R$ e Símbolos)
+        # 1. Tratamento de Colunas Numéricas
         for col in COLUNAS_NUMERICAS:
             if col in df.columns:
-                # Remove espaços, vírgulas (usadas como separador de milhar) e R$
-                # E converte para numérico
                 df[col] = df[col].astype(str).str.replace(r'[^0-9,.]', '', regex=True)
                 df[col] = df[col].str.replace(',', '.', regex=False)
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
@@ -46,57 +57,81 @@ def carregar_e_tratar_dados(caminho_arquivo):
         # 2. Garantir que 'Data da Venda' seja datetime e filtrar dados inválidos
         if 'Data da Venda' in df.columns:
             df['Data da Venda'] = pd.to_datetime(df['Data da Venda'], errors='coerce')
-            
-            # Remove linhas com 'Data da Venda' nula ou inválida
             df.dropna(subset=['Data da Venda'], inplace=True) 
             
-            # 3. CRIAÇÃO DAS COLUNAS DE MÊS E ANO PARA FILTRAGEM
+            # 3. CRIAÇÃO DAS COLUNAS DE MÊS, ANO E TEMPORADA
             df['Ano'] = df['Data da Venda'].dt.year.astype(str)
             df['Mês_num'] = df['Data da Venda'].dt.month.astype(str)
             
-            # 4. CRIAÇÃO DA COLUNA DE TEMPORADA DE EXIBIÇÃO
             if COLUNA_NUMERO_TEMPORADA in df.columns:
-                # Garante que a coluna de temporada é numérica e a converte para 'Temporada X'
                 df[COLUNA_NUMERO_TEMPORADA] = pd.to_numeric(df[COLUNA_NUMERO_TEMPORADA], errors='coerce').fillna(0).astype(int)
                 df['Temporada_Exibicao'] = 'Temporada ' + df[COLUNA_NUMERO_TEMPORADA].astype(str)
             
-            # 5. Mapeamento e Formatação para o Filtro de Mês 
+            # 4. Mapeamento e Formatação para o Filtro de Mês 
             nomes_meses_map = {
                 '1': 'Jan (01)', '2': 'Fev (02)', '3': 'Mar (03)', '4': 'Abr (04)',
                 '5': 'Mai (05)', '6': 'Jun (06)', '7': 'Jul (07)', '8': 'Ago (08)',
                 '9': 'Set (09)', '10': 'Out (10)', '11': 'Nov (11)', '12': 'Dez (12)'
             }
-            # Aqui, mapeamos e garantimos que apenas os meses válidos sejam exibidos.
             df['Mês_Exibicao'] = df['Mês_num'].map(nomes_meses_map)
             
-            # === 6. LÓGICA DE NOVO CADASTRADO (CRÍTICO) ===
-            if COLUNA_CNPJ_CPF in df.columns and COLUNA_NUMERO_TEMPORADA in df.columns:
-                
-                # CRÍTICO: Limpar colunas para merge
+            # 5. CRÍTICO: LIMPEZA DO CPF/CNPJ (base para todas as análises de identidade)
+            if COLUNA_CNPJ_CPF in df.columns:
                 df['CNPJ_CPF_LIMPO'] = df[COLUNA_CNPJ_CPF].astype(str).str.replace(r'[^0-9]', '', regex=True)
+            else:
+                 df['CNPJ_CPF_LIMPO'] = ''
+
+            # === 6. LÓGICA DE CONSOLIDAÇÃO DE ENTIDADES (PARA O ITEM 8) ===
+            
+            if not df_map_completo.empty and COLUNA_NOME_MAP_CONSOLIDACAO in df_map_completo.columns:
                 
+                # 6.1. Prepara a base de mapeamento
+                df_map_completo['CNPJ_CPF_LIMPO'] = df_map_completo['CPF'].astype(str).str.replace(r'[^0-9]', '', regex=True)
+                
+                # Seleciona o vínculo (o CPF/CNPJ limpo vira a chave para a Chave_Consolidada)
+                df_map_simplificado = df_map_completo[['CNPJ_CPF_LIMPO', COLUNA_NOME_MAP_CONSOLIDACAO]].copy()
+                
+                # Garante que não há duplicatas de mapeamento (usa o primeiro 'Nome Fantasia' se houver conflito)
+                df_map_simplificado = df_map_simplificado.drop_duplicates(subset=['CNPJ_CPF_LIMPO'], keep='first')
+                
+                # Renomeia a coluna de referência para a chave de consolidação que usaremos.
+                df_map_simplificado.rename(columns={COLUNA_NOME_MAP_CONSOLIDACAO: COLUNA_CHAVE_CONSOLIDADA}, inplace=True)
+
+                # 6.2. Faz o MERGE com o DF principal
+                df = pd.merge(
+                    df, 
+                    df_map_simplificado, 
+                    on='CNPJ_CPF_LIMPO', 
+                    how='left'
+                )
+                
+                # 6.3. Fallback: Se não tem mapeamento, a chave de consolidação é o próprio Especificador/Empresa
+                df[COLUNA_CHAVE_CONSOLIDADA] = df[COLUNA_CHAVE_CONSOLIDADA].fillna(df[COLUNA_ESPECIFICADOR])
+            else:
+                # Fallback Mestre: Se não houver aba de mapeamento ou coluna, a chave é o próprio CNPJ/CPF Limpo
+                df[COLUNA_CHAVE_CONSOLIDADA] = df['CNPJ_CPF_LIMPO']
+
+            # === 7. LÓGICA DE NOVO CADASTRADO ===
+            if COLUNA_CNPJ_CPF in df.columns and COLUNA_NUMERO_TEMPORADA in df.columns:
                 if COLUNA_CPF_NOVO_CADASTRO in df_novos.columns:
                     df_novos['CPF_LIMPO'] = df_novos[COLUNA_CPF_NOVO_CADASTRO].astype(str).str.replace(r'[^0-9]', '', regex=True)
                 
-                    # 6.1. Identifica QUEM está na lista de Novos Cadastrados
                     df['Novo_Cadastro_Existe'] = df['CNPJ_CPF_LIMPO'].isin(df_novos['CPF_LIMPO'].unique())
                     
-                    # 6.2. Calculamos a data da primeira compra histórica para clientes da aba principal
                     df_primeira_compra = df.groupby('CNPJ_CPF_LIMPO')['Data da Venda'].min().reset_index()
                     df_primeira_compra.columns = ['CNPJ_CPF_LIMPO', 'Data_Primeira_Compra_Historica']
                     df = pd.merge(df, df_primeira_compra, on='CNPJ_CPF_LIMPO', how='left')
                     
-                    # 6.3. Marca APENAS a linha que corresponde à primeira compra histórica
                     df['Novo_Cadastrado'] = np.where(
                         (df['Novo_Cadastro_Existe'] == True) & 
-                        (df['Data da Venda'] == df['Data_Primeira_Compra_Historica']), # CRÍTICO: Usa a data da venda, não a da temporada.
+                        (df['Data da Venda'] == df['Data_Primeira_Compra_Historica']),
                         True,
                         False
                     )
                 else:
                     df['Novo_Cadastrado'] = False 
             
-        return df, df_novos # Retorna os dois DataFrames
+        return df, df_novos
     
     except FileNotFoundError:
         st.error(f"❌ Erro: Arquivo '{caminho_arquivo}' não encontrado.")

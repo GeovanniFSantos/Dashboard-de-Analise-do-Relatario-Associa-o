@@ -25,3 +25,9 @@ MES_ORDEM_FISCAL = {
     'Mai (05)': 11, 'Jun (06)': 12, 'Jul (07)': 1, 'Ago (08)': 2,
     'Set (09)': 3, 'Out (10)': 4, 'Nov (11)': 5, 'Dez (12)': 6
 }
+
+# NOVAS CONSTANTES PARA CONSOLIDAÇÃO DE ENTIDADES (Item 8)
+NOME_ABA_MAP_CPF_CNPJ = 'Base de Mapeamento Completo' 
+COLUNA_CHAVE_CONSOLIDADA = 'Chave_Consolidada'
+# Coluna da Base de Mapeamento que será usada como a chave de vínculo (Nome Fantasia ou CNPJ Principal)
+COLUNA_NOME_MAP_CONSOLIDACAO = 'Nome Fantasia'

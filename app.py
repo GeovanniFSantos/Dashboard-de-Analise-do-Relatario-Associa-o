@@ -117,7 +117,6 @@ if not df_dados_original.empty:
         if temporadas_selecionadas_exib:
             df_base_para_filtros = df_base_para_filtros[df_base_para_filtros['Temporada_Exibicao'].isin(temporadas_selecionadas_exib)].copy()
         
-
     # 2. Filtro por Mês (RESTAUROU O MULTISELECT DE MÊS)
     if 'Mês_Exibicao' in df_base_para_filtros.columns:
         # AQUI usamos dropna() para remover meses que não foram mapeados (os 'esquisitos')
@@ -132,7 +131,7 @@ if not df_dados_original.empty:
         
         # Aplicação do Filtro de Mês (AGORA DENTRO DO BLOCO IF)
         if meses_selecionados_exib:
-             df_base_para_filtros = df_base_para_filtros[df_base_para_filtros['Mês_Exibicao'].isin(meses_selecionados_exib)].copy()
+            df_base_para_filtros = df_base_para_filtros[df_base_para_filtros['Mês_Exibicao'].isin(meses_selecionados_exib)].copy()
 
     
     # O df_total_periodo agora contém os filtros de Temporada e Mês
@@ -235,8 +234,8 @@ if not df_dados_original.empty:
     
     # 3. Combine o DataFrame para a exibição no Streamlit
     df_combinado = pd.concat([df_desempenho_filtrado], 
-                             keys=['Gabriel Pro Filtrado'], 
-                             axis=1)
+                            keys=['Gabriel Pro Filtrado'], 
+                            axis=1)
     
     # Criar uma tabela formatada para a exibição
     st.subheader("1. Comparativo de Desempenho por Temporada")
@@ -295,20 +294,28 @@ if not df_dados_original.empty:
 
     
     # 2. CÁLCULO PARA O ESCOPO TOTAL (GABRIEL PRO)
-    df_gabriel_base = df_base_gabriel.groupby(COLUNA_ESPECIFICADOR)['Pontos'].sum().reset_index()
-    df_gabriel_base.columns = [COLUNA_ESPECIFICADOR, 'Pontuacao_Total']
+    # NOVO AGRUPAMENTO: Agrupa pela CHAVE CONSOLIDADA
+    df_gabriel_base = df_base_gabriel.groupby(COLUNA_CHAVE_CONSOLIDADA)['Pontos'].sum().reset_index()
+    df_gabriel_base.columns = [COLUNA_CHAVE_CONSOLIDADA, 'Pontuacao_Total']
     # USA FUNÇÃO IMPORTADA
     df_desempenho_gabriel = calcular_categorias(df_base_gabriel, df_gabriel_base) 
 
     # 3. CÁLCULO PARA O ESCOPO SEGMENTO 
-    df_segmento_base = df_base_segmento.groupby(COLUNA_ESPECIFICADOR)['Pontos'].sum().reset_index()
-    df_segmento_base.columns = [COLUNA_ESPECIFICADOR, 'Pontuacao_Total']
+    # NOVO AGRUPAMENTO: Agrupa pela CHAVE CONSOLIDADA
+    df_segmento_base = df_base_segmento.groupby(COLUNA_CHAVE_CONSOLIDADA)['Pontos'].sum().reset_index()
+    df_segmento_base.columns = [COLUNA_CHAVE_CONSOLIDADA, 'Pontuacao_Total']
     # USA FUNÇÃO IMPORTADA
     df_desempenho_segmento = calcular_categorias(df_base_segmento, df_segmento_base)
     
     # 4. AGRUPAMENTO FINAL DAS CATEGORIAS (Contagem de Profissionais) - USA FUNÇÃO IMPORTADA
-    contagem_segmento_cat = get_contagem_categoria(df_desempenho_segmento, CATEGORIAS_NOMES)
-    contagem_gabriel_cat = get_contagem_categoria(df_desempenho_gabriel, CATEGORIAS_NOMES)
+    
+    # Renomeia temporariamente para COLUNA_ESPECIFICADOR para a função get_contagem_categoria
+    # contar o número de CHAVES CONSOLIDADAS, e não o número de CPFs/CNPJs não agrupados
+    df_desempenho_gabriel_ajustado = df_desempenho_gabriel.rename(columns={COLUNA_CHAVE_CONSOLIDADA: COLUNA_ESPECIFICADOR})
+    df_desempenho_segmento_ajustado = df_desempenho_segmento.rename(columns={COLUNA_CHAVE_CONSOLIDADA: COLUNA_ESPECIFICADOR})
+
+    contagem_segmento_cat = get_contagem_categoria(df_desempenho_segmento_ajustado, CATEGORIAS_NOMES)
+    contagem_gabriel_cat = get_contagem_categoria(df_desempenho_gabriel_ajustado, CATEGORIAS_NOMES)
     
     
     # 5. CONSTRUÇÃO DA TABELA FINAL + CÁLCULO DA PARTICIPAÇÃO (ITEM 1)
@@ -338,6 +345,7 @@ if not df_dados_original.empty:
     # 6. Adicionar Linha Total
     total_row = {
         'Profissional Ativo': 'Total',
+        # Soma a contagem total de entidades, incluindo 'Sem Categoria' (que deve estar em contagem_segmento_cat)
         'Qtd Segmento': contagem_segmento_cat.get('Sem Categoria', 0) + df_categorias_comparativo['Qtd Segmento'].sum(),
         'Qtd Gabriel Pro': contagem_gabriel_cat.get('Sem Categoria', 0) + df_categorias_comparativo['Qtd Gabriel Pro'].sum(),
         'Participacao': 0, 
@@ -375,18 +383,19 @@ if not df_dados_original.empty:
     # USA FUNÇÃO IMPORTADA style_nome_categoria
     st.dataframe(
         df_exibir_categorias[['Profissional Ativo', 'Qtd Segmento', 'Qtd Gabriel Pro', 'Participacao Texto']].style
-                                     .applymap(style_nome_categoria, subset=['Profissional Ativo']) 
-                                     .apply(style_participacao, subset=['Participacao Texto'], axis=1) # Usa a função ajustada
-                                     .format({col: '{:,.0f}' for col in ['Qtd Segmento', 'Qtd Gabriel Pro']})
-                                     # Usa a referência para a linha Total na nova cópia do DF
-                                     .set_properties(**{'font-weight': 'bold'}, subset=pd.IndexSlice[df_exibir_categorias['Profissional Ativo'] == 'Total', :])
-                                     .set_properties(**{'text-align': 'center'}, subset=pd.IndexSlice[:, ['Qtd Segmento', 'Qtd Gabriel Pro', 'Participacao Texto']]), 
+            
+            .applymap(style_nome_categoria, subset=['Profissional Ativo']) 
+            .apply(style_participacao, subset=['Participacao Texto'], axis=1) # Usa a função ajustada
+            .format({col: '{:,.0f}' for col in ['Qtd Segmento', 'Qtd Gabriel Pro']})
+            # Usa a referência para a linha Total na nova cópia do DF
+            .set_properties(**{'font-weight': 'bold'}, subset=pd.IndexSlice[df_exibir_categorias['Profissional Ativo'] == 'Total', :])
+            .set_properties(**{'text-align': 'center'}, subset=pd.IndexSlice[:, ['Qtd Segmento', 'Qtd Gabriel Pro', 'Participacao Texto']]), 
         use_container_width=True,
         column_config={
             "Participacao Texto": st.column_config.
-                                              Column("Participação Loja/Segmento", 
-                                                      help="Participação da Contagem de Profissionais da Loja na Contagem de Profissionais do Segmento.",
-                                                      width="medium")
+                                    Column("Participação Loja/Segmento", 
+                                            help="Participação da Contagem de Profissionais da Loja na Contagem de Profissionais do Segmento.",
+                                            width="medium")
         }
     )
     
@@ -449,9 +458,9 @@ if not df_dados_original.empty:
             st.dataframe(
                 df_pivot_pontos[colunas_a_exibir].style.format({col: lambda x: formatar_milhar_br(x) 
                                                                for col in colunas_temporada_sorted_num})
-                                                     .apply(style_evolucao_percentual_texto, subset=[nome_coluna_evolucao], axis=0) 
-                                                     .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, 
-                                                                     subset=pd.IndexSlice[:, colunas_temporada_sorted_num]),
+                                                .apply(style_evolucao_percentual_texto, subset=[nome_coluna_evolucao], axis=0) 
+                                                .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, 
+                                                              subset=pd.IndexSlice[:, colunas_temporada_sorted_num]),
                 use_container_width=True
             )
 
@@ -469,20 +478,20 @@ if not df_dados_original.empty:
             
             # 2. Definir a função local de estilo da linha Total para o DataFrame resetado
             def style_total_pontuacao_resetado(row):
-                 # A linha 'Total' é identificada pelo valor na coluna 'Mês'
-                 if row['Mês'] == 'Total': 
-                     return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
-                 return [''] * len(row)
-                 
+                # A linha 'Total' é identificada pelo valor na coluna 'Mês'
+                if row['Mês'] == 'Total': 
+                    return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
+                return [''] * len(row)
+                
             st.dataframe(
                 df_pivot_pontos_clean[colunas_temporada_sorted_num + ['Mês']].style
-                                                             .apply(style_total_pontuacao_resetado, axis=1) # Aplica o estilo na linha 'Total'
-                                                             .format({col: lambda x: formatar_milhar_br(x)
-                                                                for col in colunas_temporada_sorted_num})
-                                                             .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'})
-                                                             ,
-                 use_container_width=True
-             )
+                                                                .apply(style_total_pontuacao_resetado, axis=1) # Aplica o estilo na linha 'Total'
+                                                                .format({col: lambda x: formatar_milhar_br(x)
+                                                                    for col in colunas_temporada_sorted_num})
+                                                                .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'})
+                                                                ,
+                use_container_width=True
+            )
 
     st.markdown("---")
 
@@ -503,7 +512,7 @@ if not df_dados_original.empty:
         df_pontos_por_temporada.sort_values(by='Ordem', inplace=True)
         
         if df_pontos_por_temporada.empty:
-             st.info("Nenhuma pontuação encontrada nas temporadas selecionadas para a entidade filtrada.")
+            st.info("Nenhuma pontuação encontrada nas temporadas selecionadas para a entidade filtrada.")
         else:
             # 3. Gerar o gráfico de barras
             fig = px.bar(
@@ -527,6 +536,7 @@ if not df_dados_original.empty:
             
             st.plotly_chart(fig, use_container_width=True)
             
+        
     elif not temporadas_selecionadas_exib:
         st.info("Selecione pelo menos uma Temporada no filtro lateral para ver a pontuação total.")
 
@@ -656,10 +666,10 @@ if not df_dados_original.empty:
         
         # Estilização: linha Total (fundo escuro e texto branco)
         def style_total_row_pedidos(row):
-             if row.name == 'Total':
-                 return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
-             return [''] * len(row)
-             
+            if row.name == 'Total':
+                return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
+            return [''] * len(row)
+            
         # Configuração das colunas para permitir a formatação
         colunas_config_pedidos = {
             'Mês': st.column_config.Column("Mês", width="small"),
@@ -737,13 +747,13 @@ if not df_dados_original.empty:
                 
                     # Gráfico
                 fig_detalhe = px.bar(
-                        df_segmentos_detalhe,
-                        x='Segmento',
-                        y='Qtd_Pedidos_Unicos',
-                        title=f"Distribuição de Pedidos por Segmento em {mes_selecionado_exib} ({temporada_selecionada_exib})",
-                        color='Segmento',
-                        text='Qtd_Pedidos_Unicos'
-                    )
+                            df_segmentos_detalhe,
+                            x='Segmento',
+                            y='Qtd_Pedidos_Unicos',
+                            title=f"Distribuição de Pedidos por Segmento em {mes_selecionado_exib} ({temporada_selecionada_exib})",
+                            color='Segmento',
+                            text='Qtd_Pedidos_Unicos'
+                        )
                 fig_detalhe.update_traces(texttemplate='%{text:,.0f}')
                 st.plotly_chart(fig_detalhe, use_container_width=True)
                     
@@ -816,7 +826,7 @@ if not df_dados_original.empty:
         df_segmento_evolucao['Evolução %'] = df_segmento_evolucao.apply(
             lambda row: calcular_evolucao_pct(row[col_pontos_atual], row[col_pontos_anterior]), axis=1
         )
-            
+        
         
         # 6. Cálculo da Participação (%) (Sempre sobre a T_Atual)
         total_pontos_atual = df_segmento_evolucao[col_pontos_atual].sum()
@@ -855,9 +865,9 @@ if not df_dados_original.empty:
 
         # Definir a função local de estilo da linha Total (necessário para a lógica do iloc[0])
         def style_total_pontuacao_local(row):
-             if row.iloc[0] == 'Total':
-                 return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
-             return [''] * len(row)
+            if row.iloc[0] == 'Total':
+                return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
+            return [''] * len(row)
             
         # 10. Exibição da Tabela
         st.dataframe(
@@ -914,8 +924,8 @@ if not df_dados_original.empty:
         
         # 2. Define o valor padrão:
         if 'item7_lojas_select' not in st.session_state or not current_selection_state:
-             # Inicializa com a lista completa de lojas ativas na base selecionada
-             st.session_state['item7_lojas_select'] = lojas_ativas_na_base
+            # Inicializa com a lista completa de lojas ativas na base selecionada
+            st.session_state['item7_lojas_select'] = lojas_ativas_na_base
         
         # 3. Garante que a seleção atual respeite as opções DISPONÍVEIS
         lojas_para_usar = [
@@ -925,7 +935,7 @@ if not df_dados_original.empty:
         # Se a lista atual no estado for maior que a lista filtrada (o filtro da sidebar
         # mudou e removeu lojas), atualizamos o estado.
         if len(lojas_para_usar) < len(st.session_state['item7_lojas_select']):
-             st.session_state['item7_lojas_select'] = lojas_para_usar
+            st.session_state['item7_lojas_select'] = lojas_para_usar
         
         # O valor a ser usado pelo multiselect é o valor atualizado na sessão.
         default_multiselect = st.session_state['item7_lojas_select']
@@ -997,7 +1007,7 @@ if not df_dados_original.empty:
         total_lojas_base_tercos = df_rank_quantitativo['Total de Lojas'].sum()
         
         # Ranking Quantitativo (Contagem de Lojas) - PONTO 2: Contagem igualitária de lojas
-        st.markdown(f"###### 7.2. Ranking por Terços (Quantitativo de Lojas) - Base: {total_lojas_base_tercos} Lojas")
+        st.markdown(f"###### 7.2. Ranking por Terços (Quantitativo de Lojas) - Base: {formatar_milhar_br(total_lojas_base_tercos)} Lojas")
         
         # Prepara o DF para exibição
         df_rank_quantitativo.index = df_rank_quantitativo['Terço']
@@ -1068,10 +1078,10 @@ if not df_dados_original.empty:
         st.info("⚠️ Selecione pelo menos duas Temporadas no filtro lateral para realizar a Análise Consolidada de Lojas.")
 
     # =======================================================================
-    # ITEM 8. DESEMPENHO POR PROFISSIONAL E CATEGORIA 
+    # ITEM 8. DESEMPENHO POR PROFISSIONAL E CATEGORIA (AGRUPADO POR CHAVE CONSOLIDADA)
     # =======================================================================
     if COLUNA_ESPECIFICADOR in df_filtrado.columns:
-        st.subheader("8. Desempenho por Profissional e Categoria")
+        st.subheader("8. Desempenho por Entidade/Profissional e Categoria (CONSOLIDADO)")
         
         # === NOVO SELETOR NO TOPO DO ITEM 8 ===
         temporada_selecionada_t8 = st.selectbox(
@@ -1089,39 +1099,70 @@ if not df_dados_original.empty:
             # Filtra a base original pelos filtros de Segmento/Loja e depois pela Temporada local
             df_base_item8 = df_filtrado[df_filtrado['Temporada_Exibicao'] == temporada_selecionada_t8].copy()
 
+        # Helper function to separate CPFs and CNPJs from a list of documents
+        def separate_documents(document_list_original):
+            cpfs = []
+            cnpjs = []
+            
+            for doc_original in document_list_original:
+                if pd.isna(doc_original) or doc_original == 'nan': continue
+                
+                # 1. Clean document for reliable length check
+                doc_limpo = str(doc_original).replace('.', '').replace('-', '').replace('/', '').replace(' ', '')
+                
+                # 2. Heuristic based on typical Brazilian document length
+                # CNPJ: 14 digits (or more if not perfectly cleaned)
+                # CPF: 11 digits
+                
+                if len(doc_limpo) >= 14: # Assume CNPJ if 14+ clean digits
+                    cnpjs.append(doc_original)
+                elif len(doc_limpo) >= 10: # Assume CPF if 10-13 clean digits (11 standard)
+                    cpfs.append(doc_original)
+                # Documents shorter than 10 clean digits are likely noise and are ignored.
+                     
+            return ', '.join(cpfs), ', '.join(cnpjs)
 
-        # 1. Agrupamento por Profissional (Pontuação Total E Qtd de Pedidos)
-        df_desempenho = df_base_item8.groupby(COLUNA_ESPECIFICADOR).agg(
+
+        # 1. Agrupamento pela CHAVE DE CONSOLIDAÇÃO (Pontuação Total E Qtd de Pedidos)
+        df_desempenho = df_base_item8.groupby(COLUNA_CHAVE_CONSOLIDADA).agg(
             Pontuacao_Total=('Pontos', 'sum'),
             Qtd_Pedidos=(COLUNA_PEDIDO, 'nunique')
         ).reset_index()
         
+        # 2. Agrupamento para obter os VÍNCULOS para a Chave Consolidada
+        df_vinculos = df_base_item8.groupby(COLUNA_CHAVE_CONSOLIDADA).agg(
+            # Obtém todos os Especificadores/Empresas vinculadas
+            Especificadores_Vinculados=(COLUNA_ESPECIFICADOR, lambda x: ', '.join(x.astype(str).unique())),
+            # Agrega uma lista de documentos originais UNICOS para separação
+            Documentos_Para_Separar=(COLUNA_CNPJ_CPF, lambda x: x.astype(str).unique().tolist()),
+        ).reset_index()
+
+        # NOVO PASSO: Aplica a função de separação para criar as colunas CPF e CNPJ
+        df_vinculos[['CPFs Vinculados', 'CNPJs Vinculados']] = df_vinculos['Documentos_Para_Separar'].apply(
+            lambda x: pd.Series(separate_documents(x))
+        )
         
-        # 2. Definição da Lógica de Categorias
-        # A lógica está dentro da função calcular_categorias (importada)
+        df_vinculos.drop(columns=['Documentos_Para_Separar'], inplace=True) # Remove a coluna intermediária
+
+
+        df_desempenho = pd.merge(df_desempenho, df_vinculos, on=COLUNA_CHAVE_CONSOLIDADA, how='left')
+        
+        # 3. Definição da Lógica de Categorias
         df_desempenho_com_categoria = calcular_categorias(df_base_item8, df_desempenho)
         df_desempenho = df_desempenho_com_categoria.copy()
-        
-        # CRÍTICO: Junta o CPF/CNPJ original para pesquisa (usamos a primeira ocorrência do CPF/CNPJ LIMPO)
-        df_cnpj_original = df_base_item8[[COLUNA_ESPECIFICADOR, COLUNA_CNPJ_CPF, 'CNPJ_CPF_LIMPO']].drop_duplicates(subset=[COLUNA_ESPECIFICADOR, 'CNPJ_CPF_LIMPO'])
-        df_desempenho = pd.merge(df_desempenho, df_cnpj_original[[COLUNA_ESPECIFICADOR, COLUNA_CNPJ_CPF]], on=COLUNA_ESPECIFICADOR, how='left')
         
         # Ordenar por Pontuação Total (do maior para o menor)
         df_desempenho.sort_values(by='Pontuacao_Total', ascending=False, inplace=True)
         
-        # 3. CÁLCULO DE EVOLUÇÃO POR CATEGORIA
+        # 4. CÁLCULO DE EVOLUÇÃO POR CATEGORIA (BASEADO NA T_ANTERIOR)
         
         temporadas_nums_selecionadas = sorted(df_base_item8[COLUNA_NUMERO_TEMPORADA].unique())
-        # A temporada atual de comparação será a mais recente na base filtrada local
         temporada_atual_num_t8 = max(temporadas_nums_selecionadas) if temporadas_nums_selecionadas else 0
-        
-        # Corrigindo a base para a temporada anterior:
         temporada_anterior_num_t8 = int(temporada_atual_num_t8) - 1 if int(temporada_atual_num_t8) > 0 else 0
-        
         
         # Criamos a tabela de resumo para o topo
         df_resumo_cat = df_desempenho.groupby('Categoria').agg(
-            Contagem=('Categoria', 'size'),
+            Contagem=(COLUNA_CHAVE_CONSOLIDADA, 'size'), # Contagem agora é feita pela CHAVE CONSOLIDADA
             Pontuacao_Categoria=('Pontuacao_Total', 'sum')
         ).reset_index()
         
@@ -1130,42 +1171,42 @@ if not df_dados_original.empty:
         evolucao_pontos_texto_list = []
         
         for index, row in df_resumo_cat.iterrows():
-             categoria = row['Categoria']
-             pontuacao_atual = row['Pontuacao_Categoria']
-             
-             # CRÍTICO: CHAMA A FUNÇÃO CORRIGIDA COM OS FILTROS DE LOJA/SEGMENTO
-             pontuacao_anterior = get_pontuacao_temporada_anterior(
-                 df_dados_original, 
-                 temporada_anterior_num_t8, # <<-- CORREÇÃO: Usar a temporada ANTERIOR para buscar a base de comparação
-                 lojas_selecionadas, 
-                 segmentos_selecionados, 
-                 categoria
-             )
-             
-             # Calcula o crescimento raw (USA FUNÇÃO IMPORTADA calcular_evolucao_pct)
-             crescimento_raw = calcular_evolucao_pct(pontuacao_atual, pontuacao_anterior)
+            categoria = row['Categoria']
+            pontuacao_atual = row['Pontuacao_Categoria']
+            
+            # CRÍTICO: CHAMA A FUNÇÃO CORRIGIDA COM OS FILTROS DE LOJA/SEGMENTO
+            pontuacao_anterior = get_pontuacao_temporada_anterior(
+                df_dados_original, 
+                temporada_anterior_num_t8, # <<-- CORREÇÃO: Usar a temporada ANTERIOR para buscar a base de comparação
+                lojas_selecionadas, 
+                segmentos_selecionados, 
+                categoria
+            )
+            
+            # Calcula o crescimento raw (USA FUNÇÃO IMPORTADA calcular_evolucao_pct)
+            crescimento_raw = calcular_evolucao_pct(pontuacao_atual, pontuacao_anterior)
 
-             # Formatação do valor para exibição (string)
-             if pontuacao_anterior > 0:
-                 crescimento_formatado = f"{crescimento_raw:.1%}"
-                 if crescimento_raw > 0.0001:
-                     evolucao_texto = f"{crescimento_formatado} ↑" 
-                 elif crescimento_raw < -0.0001:
-                     evolucao_texto = f"{crescimento_formatado} ↓" 
-                 else:
-                     evolucao_texto = "0.0% ≈" 
-             elif pontuacao_atual > 0:
-                 evolucao_texto = "+100% ↑"
-             else:
-                 evolucao_texto = "N/A"
-                 
-             evolucao_pontos_list.append(crescimento_raw)
-             evolucao_pontos_texto_list.append(evolucao_texto)
-             
+            # Formatação do valor para exibição (string)
+            if pontuacao_anterior > 0:
+                crescimento_formatado = f"{crescimento_raw:.1%}"
+                if crescimento_raw > 0.0001:
+                    evolucao_texto = f"{crescimento_formatado} ↑" 
+                elif crescimento_raw < -0.0001:
+                    evolucao_texto = f"{crescimento_formatado} ↓" 
+                else:
+                    evolucao_texto = "0.0% ≈" 
+            elif pontuacao_atual > 0:
+                evolucao_texto = "+100% ↑"
+            else:
+                evolucao_texto = "N/A"
+                
+            evolucao_pontos_list.append(crescimento_raw)
+            evolucao_pontos_texto_list.append(evolucao_texto)
+            
         df_resumo_cat['Evolução Pontos'] = evolucao_pontos_list
         df_resumo_cat['Evolução Pontos Texto'] = evolucao_pontos_texto_list
 
-        # 4. TRATAMENTO DA LINHA 'TOTAL' (SUBSTITUINDO 'SEM CATEGORIA')
+        # 5. TRATAMENTO DA LINHA 'TOTAL' (SUBSTITUINDO 'SEM CATEGORIA')
         
         # Calculando o Total Geral de Pontos e Contagem (excluindo 'Sem Categoria' do df_resumo_cat para somar)
         df_soma_categorias = df_resumo_cat[df_resumo_cat['Categoria'] != 'Sem Categoria']
@@ -1174,7 +1215,7 @@ if not df_dados_original.empty:
         total_pontuacao = df_soma_categorias['Pontuacao_Categoria'].sum()
         
         # CÁLCULO DA EVOLUÇÃO TOTAL (Todos os profissionais no filtro de Segmento/Loja)
-        pontuacao_total_atual = df_base_item8['Pontos'].sum() # Variável corretamente definida
+        pontuacao_total_atual = df_base_item8['Pontos'].sum() 
         
         # CRÍTICO: Usamos a T_Atual para achar o valor da T_Anterior (corrigido no módulo)
         pontuacao_total_anterior = get_pontuacao_temporada_anterior(
@@ -1183,20 +1224,20 @@ if not df_dados_original.empty:
              lojas_selecionadas, 
              segmentos_selecionados, 
              categoria=None
-         )
+           )
         
         # Calcula o crescimento total raw (USA FUNÇÃO IMPORTADA calcular_evolucao_pct)
         crescimento_total_raw = calcular_evolucao_pct(pontuacao_total_atual, pontuacao_total_anterior)
         
         # Formatação do texto da evolução total
         if pontuacao_total_anterior > 0:
-             crescimento_formatado = f"{crescimento_total_raw:.1%}"
-             if crescimento_total_raw > 0.0001:
-                 evolucao_texto_total = f"{crescimento_formatado} ↑" 
-             elif crescimento_total_raw < -0.0001:
-                 evolucao_texto_total = f"{crescimento_formatado} ↓" 
-             else:
-                 evolucao_texto_total = "0.0% ≈" 
+            crescimento_formatado = f"{crescimento_total_raw:.1%}"
+            if crescimento_total_raw > 0.0001:
+                evolucao_texto_total = f"{crescimento_formatado} ↑" 
+            elif crescimento_total_raw < -0.0001:
+                evolucao_texto_total = f"{crescimento_formatado} ↓" 
+            else:
+                evolucao_texto_total = "0.0% ≈" 
         elif pontuacao_total_atual > 0:
             evolucao_texto_total = "+100% ↑"
         else:
@@ -1216,7 +1257,7 @@ if not df_dados_original.empty:
         df_resumo_cat = pd.concat([df_resumo_cat, df_total_row], ignore_index=True)
 
 
-        # 5. MATRIZ DE RESUMO (KPIs no topo)
+        # 6. MATRIZ DE RESUMO (KPIs no topo)
         st.markdown("##### Resumo das Categorias (Contagem e Pontuação)")
         
         # Criando o dicionário de cores para os nomes das categorias (para st.markdown)
@@ -1248,8 +1289,8 @@ if not df_dados_original.empty:
                 cor = '#d1d1d1' 
             
             with colunas_kpi_contagem[i]:
-                 st.markdown(f"<p style='color: {cor}; font-weight: bold; font-size: 14px;'>{categoria}</p>", unsafe_allow_html=True)
-                 st.metric(label=' ', value=f"{contagem:,.0f}")
+                st.markdown(f"<p style='color: {cor}; font-weight: bold; font-size: 14px;'>{categoria}</p>", unsafe_allow_html=True)
+                st.metric(label=' ', value=f"{contagem:,.0f}")
                 
         # Loop para exibir a pontuação total por categoria
         for i, categoria in enumerate(colunas_matriz_display):
@@ -1285,12 +1326,12 @@ if not df_dados_original.empty:
             temp_df = df_resumo_cat.loc[df_resumo_cat['Categoria'] == categoria]
 
             if not temp_df.empty:
-                 row = temp_df.iloc[0]
-                 evolucao_texto = row['Evolução Pontos Texto']
-                 crescimento_raw = row['Evolução Pontos']
+                row = temp_df.iloc[0]
+                evolucao_texto = row['Evolução Pontos Texto']
+                crescimento_raw = row['Evolução Pontos']
             else:
-                 evolucao_texto = "N/A"
-                 crescimento_raw = 0.0
+                evolucao_texto = "N/A"
+                crescimento_raw = 0.0
             
             with colunas_kpi_evolucao[i]:
                 cor = style_kpi_evolucao(crescimento_raw)
@@ -1299,11 +1340,11 @@ if not df_dados_original.empty:
 
         st.markdown("---") # Divisor para separar os KPIs da Tabela
         
-        # --- NOVO CAMPO DE PESQUISA (ITEM 1) ---
+        # --- NOVO CAMPO DE PESQUISA ---
         termo_pesquisa = st.text_input(
-            "Pesquisar Profissional (Nome, Categoria ou CPF/CNPJ):",
+            "Pesquisar Entidade (Chave Consolidada, Nome, Categoria ou CPF/CNPJ):",
             key='search_profissional',
-            placeholder="Digite nome, categoria (Diamante, Ruby, etc.) ou CPF/CNPJ"
+            placeholder="Digite o nome da empresa, a chave de consolidação ou o CPF/CNPJ vinculado"
         )
         
         df_tabela_exibicao = df_desempenho.copy()
@@ -1311,30 +1352,36 @@ if not df_dados_original.empty:
         if termo_pesquisa:
             termo_pesquisa_lower = termo_pesquisa.lower()
             
-            # Filtra o DataFrame usando 3 colunas 
+            # Filtra o DataFrame usando 3 colunas (Chave, Especificadores Vinculados e CPFs Vinculados)
             df_tabela_exibicao = df_tabela_exibicao[
-                df_tabela_exibicao[COLUNA_ESPECIFICADOR].astype(str).str.lower().str.contains(termo_pesquisa_lower) |
+                df_tabela_exibicao[COLUNA_CHAVE_CONSOLIDADA].astype(str).str.lower().str.contains(termo_pesquisa_lower) |
                 df_tabela_exibicao['Categoria'].astype(str).str.lower().str.contains(termo_pesquisa_lower) |
-                df_tabela_exibicao[COLUNA_CNPJ_CPF].astype(str).str.lower().str.contains(termo_pesquisa_lower)
+                df_tabela_exibicao['Especificadores_Vinculados'].astype(str).str.lower().str.contains(termo_pesquisa_lower) |
+                (
+                    (df_tabela_exibicao['CNPJs Vinculados'].astype(str).str.lower().str.contains(termo_pesquisa_lower, na=False)) |
+                    (df_tabela_exibicao['CPFs Vinculados'].astype(str).str.lower().str.contains(termo_pesquisa_lower, na=False))
+                )
             ].copy()
             
             if df_tabela_exibicao.empty:
-                st.info(f"Nenhum profissional encontrado para o termo: **{termo_pesquisa}**.")
+                st.info(f"Nenhuma entidade/profissional consolidado encontrado para o termo: **{termo_pesquisa}**.")
                 
-        # 6. TABELA DE DESEMPENHO INDIVIDUAL (Matriz)
-        st.markdown("##### Tabela de Desempenho Individual")
+        # 7. TABELA DE DESEMPENHO INDIVIDUAL (Matriz)
+        st.markdown("##### Tabela de Desempenho Individual (Agrupado por Entidade Consolidada)")
         
         # Prepara a tabela para exibição 
         df_tabela_exibicao = df_tabela_exibicao[[
-            COLUNA_ESPECIFICADOR, 
-            COLUNA_CNPJ_CPF, 
-            'Pontuacao_Total', 
-            'Qtd_Pedidos', 
-            'Categoria'
+            COLUNA_CHAVE_CONSOLIDADA, # 1. Chave Consolidada
+            'CNPJs Vinculados',       # 2. NOVO: CNPJs
+            'CPFs Vinculados',        # 3. NOVO: CPFs
+            'Especificadores_Vinculados', # 4. Nomes Vinculados
+            'Pontuacao_Total',        # 5. Pontuação
+            'Qtd_Pedidos',            # 6. Qtd Pedidos
+            'Categoria'               # 7. Categoria
         ]].copy()
         
         # Renomear colunas para o Português para exibição
-        df_tabela_exibicao.columns = ['Especificador / Empresa', 'CPF/CNPJ', 'Pontuação', 'Qtd de Pedidos', 'Categoria'] 
+        df_tabela_exibicao.columns = ['Chave de Consolidação', 'CNPJs Vinculados', 'CPFs Vinculados', 'Nomes Vinculados', 'Pontuação', 'Qtd de Pedidos', 'Categoria'] 
         
         # Formatar a coluna Pontuação 
         df_tabela_exibicao['Pontuação'] = df_tabela_exibicao['Pontuação'].apply(
@@ -1412,7 +1459,7 @@ if not df_dados_original.empty:
                 # Função de Estilização (Item 10B)
                 def style_evolucao_qualitativa_clientes(series):
                     if 'Evolução Qualitativa Valor' not in df_pivot_novos.columns:
-                          return [''] * len(series)
+                        return [''] * len(series)
 
                     raw_values = df_pivot_novos['Evolução Qualitativa Valor']
                     
@@ -1479,229 +1526,229 @@ if not df_dados_original.empty:
                     df_nomes_novos['Primeira Compra'] = df_nomes_novos['Primeira Compra'].dt.strftime('%d/%m/%Y')
                     
                     st.dataframe(df_nomes_novos.style.set_properties(**{'border': '1px solid #333333'}), 
-                                                 use_container_width=True)
+                                                     use_container_width=True)
                 else:
                     st.info("Nenhum novo profissional encontrado para detalhe com os filtros aplicados.")
                         
-        # =======================================================================
-        # ITEM 10. ANÁLISE DE CLIENTES ATIVOS E INATIVOS (Retenção)
-        # =======================================================================
-        if not df_dados_original.empty:
-            
-            st.markdown("---")
-
-            # 1. Tabela de Resumo Anual (Item 10A) - ATENDE FILTROS DE Segmento/Loja
-            st.subheader("10. Análise de Clientes Ativos vs Inativos (Retenção)")
-            
-            # CRÍTICO: Recalcula a retenção APENAS para a Entidade/Segmento selecionado - USA FUNÇÃO IMPORTADA
-            df_anual_metricas, clientes_historicos_na_entidade = calcular_clientes_ativos_inativos(
-                df_dados_original, 
-                lojas_selecionadas, 
-                segmentos_selecionados
-            )
-            
-            # CRÍTICO: Título alterado para refletir 'Temporada'
-            st.markdown("##### 10 A. Resumo por Temporada de Clientes Ativos e Inativos (Entidade Filtrada)")
-            
-            # Função de Estilização para a coluna % Ativo (Item 10A)
-            def style_percentual_ativo(val):
-                if not isinstance(val, (float, int)): return ''
-                if val >= 0.5: # 50% ou mais de Ativos
-                    return 'color: #a3ffb1; font-weight: bold; background-color: #00800020' # Verde ajustado
-                elif val > 0:
-                    return 'color: #ffe08a; font-weight: bold; background-color: #ffd70020'
-                else:
-                    return 'color: #ff9999; font-weight: bold; background-color: #ff000020'
+            # =======================================================================
+            # ITEM 10. ANÁLISE DE CLIENTES ATIVOS E INATIVOS (Retenção)
+            # =======================================================================
+            if not df_dados_original.empty:
                 
-            # Aplicando a interatividade e estilização na tabela A
-            colunas_config = {
-                'Temporada': st.column_config.Column("Temporada", width="small"),
-                'Contagem de Clientes Pontuando (Ativos)': st.column_config.Column(
-                    "Clientes Pontuando (Ativos)", 
-                    help="Total de clientes que pontuaram na temporada na Entidade. Clique na linha para filtrar."
-                ),
-                'Contagem de Clientes Não Pontuando (Inativos)': st.column_config.Column(
-                    "Clientes Não Pontuando (Inativos)", 
-                    help="Total de clientes que pontuaram historicamente na Entidade, mas não nesta temporada. Clique na linha para filtrar."
-                ),
-                'Total de Clientes': st.column_config.Column(
-                    "Total de Clientes",
-                    help="Soma de Clientes Ativos + Inativos (Clientes que já pontuaram na Entidade)"
-                ),
-                # CORREÇÃO: Removido o argumento 'format'
-                '% Ativo': st.column_config.Column(
-                    "% Ativo",
-                    help="Porcentagem de Clientes Ativos sobre o Total de Clientes (Ativos + Inativos)",
-                ),
-            }
+                st.markdown("---")
 
-            # Colunas a exibir 
-            colunas_display_10A = [
-                'Temporada', 
-                'Contagem de Clientes Pontuando (Ativos)', 
-                'Contagem de Clientes Não Pontuando (Inativos)', 
-                'Total de Clientes',
-                '% Ativo'
-            ]
-            
-            # Exibe o dataframe com a funcionalidade de seleção de linha (para substituir o on_click)
-            evento = st.dataframe(
-                df_anual_metricas[colunas_display_10A].style
-                    .applymap(style_percentual_ativo, subset=['% Ativo'])
-                    .format({
-                        # USA FUNÇÃO IMPORTADA formatar_milhar_br
-                        'Contagem de Clientes Pontuando (Ativos)': formatar_milhar_br,
-                        'Contagem de Clientes Não Pontuando (Inativos)': formatar_milhar_br,
-                        'Total de Clientes': formatar_milhar_br,
-                        '% Ativo': '{:.1%}' # Formatando como porcentagem (mantido no .style.format)
-                    }).set_properties(**{'border': '1px solid #333333'}),
-                column_config=colunas_config,
-                use_container_width=True,
-                selection_mode="single-row", # Habilita a seleção de uma única linha
-                on_select="rerun" # Adicionado para garantir o callback e capturar a seleção
-            )
-            
-            # Lógica de processamento do clique (seleção de linha)
-            if evento.selection['rows']:
-                selected_index = evento.selection['rows'][0]
-                selected_row = df_anual_metricas.iloc[selected_index]
+                # 1. Tabela de Resumo Anual (Item 10A) - ATENDE FILTROS DE Segmento/Loja
+                st.subheader("10. Análise de Clientes Ativos vs Inativos (Retenção)")
                 
-                col_click_ativo, col_click_inativo = st.columns(2)
+                # CRÍTICO: Recalcula a retenção APENAS para a Entidade/Segmento selecionado - USA FUNÇÃO IMPORTADA
+                df_anual_metricas, clientes_historicos_na_entidade = calcular_clientes_ativos_inativos(
+                    df_dados_original, 
+                    lojas_selecionadas, 
+                    segmentos_selecionados
+                )
                 
-                status_selecionado = None
+                # CRÍTICO: Título alterado para refletir 'Temporada'
+                st.markdown("##### 10 A. Resumo por Temporada de Clientes Ativos e Inativos (Entidade Filtrada)")
                 
-                # Opções de filtragem
-                with col_click_ativo:
-                    if st.button(f"🔎 Ver {formatar_milhar_br(selected_row['Contagem de Clientes Pontuando (Ativos)'])} ATIVOS em {selected_row['Temporada']}"):
-                        status_selecionado = 'ativo'
+                # Função de Estilização para a coluna % Ativo (Item 10A)
+                def style_percentual_ativo(val):
+                    if not isinstance(val, (float, int)): return ''
+                    if val >= 0.5: # 50% ou mais de Ativos
+                        return 'color: #a3ffb1; font-weight: bold; background-color: #00800020' # Verde ajustado
+                    elif val > 0:
+                        return 'color: #ffe08a; font-weight: bold; background-color: #ffd70020'
+                    else:
+                        return 'color: #ff9999; font-weight: bold; background-color: #ff000020'
+                        
+                # Aplicando a interatividade e estilização na tabela A
+                colunas_config = {
+                    'Temporada': st.column_config.Column("Temporada", width="small"),
+                    'Contagem de Clientes Pontuando (Ativos)': st.column_config.Column(
+                        "Clientes Pontuando (Ativos)", 
+                        help="Total de clientes que pontuaram na temporada na Entidade. Clique na linha para filtrar."
+                    ),
+                    'Contagem de Clientes Não Pontuando (Inativos)': st.column_config.Column(
+                        "Clientes Não Pontuando (Inativos)", 
+                        help="Total de clientes que pontuaram historicamente na Entidade, mas não nesta temporada. Clique na linha para filtrar."
+                    ),
+                    'Total de Clientes': st.column_config.Column(
+                        "Total de Clientes",
+                        help="Soma de Clientes Ativos + Inativos (Clientes que já pontuaram na Entidade)"
+                    ),
+                    # CORREÇÃO: Removido o argumento 'format'
+                    '% Ativo': st.column_config.Column(
+                        "% Ativo",
+                        help="Porcentagem de Clientes Ativos sobre o Total de Clientes (Ativos + Inativos)",
+                    ),
+                }
+
+                # Colunas a exibir 
+                colunas_display_10A = [
+                    'Temporada', 
+                    'Contagem de Clientes Pontuando (Ativos)', 
+                    'Contagem de Clientes Não Pontuando (Inativos)', 
+                    'Total de Clientes',
+                    '% Ativo'
+                ]
                 
-                with col_click_inativo:
-                    if st.button(f"🔎 Ver {formatar_milhar_br(selected_row['Contagem de Clientes Não Pontuando (Inativos)'])} INATIVOS em {selected_row['Temporada']}"):
-                        status_selecionado = 'inativo'
-
-                if status_selecionado:
-                    st.session_state['filtro_status_ano'] = {
-                        'ano': selected_row['Temporada'], 
-                        'status': status_selecionado, 
-                        'termo_pesquisa': status_selecionado.upper()
-                    }
-                    st.rerun()
-
-            
-            
-            # 2. Tabela de Detalhe por Cliente (Item 10B) - RESPEITANDO OS FILTROS LATERAIS
-            st.markdown("##### 10 B. Detalhe de Clientes Ativos/Inativos no Período e Entidade Selecionados")
-            
-            # 1. Identificar clientes que pontuaram no período FILTRADO
-            clientes_ativos_no_periodo_filtrado = set(df_filtrado['CNPJ_CPF_LIMPO'].unique())
-            
-            # 2. Clientes Inativos: Estão no histórico da ENTIDADE, mas NÃO pontuaram no PERÍODO FILTRADO
-            clientes_inativos_no_periodo = clientes_historicos_na_entidade.difference(clientes_ativos_no_periodo_filtrado)
-
-            # 3. DataFrame de ATIVOS 
-            df_ativos = df_filtrado.groupby([COLUNA_ESPECIFICADOR, 'CNPJ_CPF_LIMPO']).agg(
-                Qtd_Pedidos_Periodo=(COLUNA_PEDIDO, 'nunique'), 
-                Ultima_Data_Compra=('Data da Venda', 'max') 
-            ).reset_index()
-            df_ativos['Status'] = 'ATIVO'
-
-            # 4. DataFrame de INATIVOS 
-            df_historico_relevante = df_dados_original[
-                (df_dados_original['Loja'].isin(lojas_selecionadas)) &
-                (df_dados_original['Segmento'].isin(segmentos_selecionados))
-            ].copy()
-            
-            df_inativos_base = df_historico_relevante[df_historico_relevante['CNPJ_CPF_LIMPO'].isin(clientes_inativos_no_periodo)].copy()
-            
-            # Agrupamos o histórico relevante para pegar a última data de compra e nome para os inativos
-            df_inativos = df_inativos_base.groupby([COLUNA_ESPECIFICADOR, 'CNPJ_CPF_LIMPO']).agg(
-                Ultima_Data_Compra=('Data da Venda', 'max') 
-            ).reset_index()
-            
-            df_inativos['Qtd_Pedidos_Periodo'] = 0
-            df_inativos['Status'] = 'INATIVO'
-
-            # Unifica Ativos e Inativos
-            df_detalhe = pd.concat([
-                df_ativos.rename(columns={'CNPJ_CPF_LIMPO': 'CPF/CNPJ_LIMPO', COLUNA_ESPECIFICADOR: 'Nome'}),
-                df_inativos.rename(columns={'CNPJ_CPF_LIMPO': 'CPF/CNPJ_LIMPO', COLUNA_ESPECIFICADOR: 'Nome'})
-            ], ignore_index=True)
-
-            # Junta o CPF/CNPJ original para exibição
-            df_cnpj_original_map = df_dados_original.groupby('CNPJ_CPF_LIMPO').agg({
-                COLUNA_CNPJ_CPF: 'first' 
-            }).reset_index().rename(columns={'CNPJ_CPF_LIMPO': 'CPF/CNPJ_LIMPO', COLUNA_CNPJ_CPF: 'CPF/CNPJ Original'})
-            
-            df_detalhe = pd.merge(df_detalhe, df_cnpj_original_map, on='CPF/CNPJ_LIMPO', how='left')
-            
-            # Limpa colunas
-            df_detalhe.drop(columns=['CPF/CNPJ_LIMPO'], inplace=True)
-            df_detalhe.rename(columns={'CPF/CNPJ Original': 'CPF/CNPJ'}, inplace=True)
-            
-            # Ordena pelo status e depois pela quantidade de pedidos
-            df_detalhe.sort_values(by=['Status', 'Qtd_Pedidos_Periodo'], ascending=[False, False], inplace=True)
-
-            # --- CAMPO DE PESQUISA (Nome, CPF/CNPJ ou ATIVO/INATIVO) + INTERATIVIDADE DE CLIQUE ---
-            
-            # Obtém o termo de pesquisa inicial do estado, se houver
-            initial_search_value = st.session_state['filtro_status_ano']['termo_pesquisa']
-            
-            # Apenas limpa o termo de pesquisa no estado após ser usado no `st.text_input`
-            st.session_state['filtro_status_ano']['termo_pesquisa'] = ''
-                  
-            termo_pesquisa_atv = st.text_input(
-                "Pesquisar Detalhe (Nome, CPF/CNPJ ou Status):",
-                key='search_profissional_atv',
-                value=initial_search_value, # Define o valor inicial com base no clique
-                placeholder="Digite nome, CPF/CNPJ ou ATIVO/INATIVO"
-            )
-            
-            df_tabela_detalhe_exibicao = df_detalhe.copy()
-
-            if termo_pesquisa_atv:
-                termo_pesquisa_atv_lower = termo_pesquisa_atv.lower()
+                # Exibe o dataframe com a funcionalidade de seleção de linha (para substituir o on_click)
+                evento = st.dataframe(
+                    df_anual_metricas[colunas_display_10A].style
+                        .applymap(style_percentual_ativo, subset=['% Ativo'])
+                        .format({
+                            # USA FUNÇÃO IMPORTADA formatar_milhar_br
+                            'Contagem de Clientes Pontuando (Ativos)': formatar_milhar_br,
+                            'Contagem de Clientes Não Pontuando (Inativos)': formatar_milhar_br,
+                            'Total de Clientes': formatar_milhar_br,
+                            '% Ativo': '{:.1%}' # Formatando como porcentagem (mantido no .style.format)
+                        }).set_properties(**{'border': '1px solid #333333'}),
+                    column_config=colunas_config,
+                    use_container_width=True,
+                    selection_mode="single-row", # Habilita a seleção de uma única linha
+                    on_select="rerun" # Adicionado para garantir o callback e capturar a seleção
+                )
                 
-                # Filtra o DataFrame usando 3 colunas
-                df_tabela_detalhe_exibicao = df_tabela_detalhe_exibicao[
-                    df_tabela_detalhe_exibicao['Nome'].astype(str).str.lower().str.contains(termo_pesquisa_atv_lower, na=False) |
-                    df_tabela_detalhe_exibicao['CPF/CNPJ'].astype(str).str.lower().str.contains(termo_pesquisa_atv_lower, na=False) |
-                    df_tabela_detalhe_exibicao['Status'].astype(str).str.lower().str.contains(termo_pesquisa_atv_lower, na=False)
+                # Lógica de processamento do clique (seleção de linha)
+                if evento.selection['rows']:
+                    selected_index = evento.selection['rows'][0]
+                    selected_row = df_anual_metricas.iloc[selected_index]
+                    
+                    col_click_ativo, col_click_inativo = st.columns(2)
+                    
+                    status_selecionado = None
+                    
+                    # Opções de filtragem
+                    with col_click_ativo:
+                        if st.button(f"🔎 Ver {formatar_milhar_br(selected_row['Contagem de Clientes Pontuando (Ativos)'])} ATIVOS em {selected_row['Temporada']}"):
+                            status_selecionado = 'ativo'
+                    
+                    with col_click_inativo:
+                        if st.button(f"🔎 Ver {formatar_milhar_br(selected_row['Contagem de Clientes Não Pontuando (Inativos)'])} INATIVOS em {selected_row['Temporada']}"):
+                            status_selecionado = 'inativo'
+
+                    if status_selecionado:
+                        st.session_state['filtro_status_ano'] = {
+                            'ano': selected_row['Temporada'], 
+                            'status': status_selecionado, 
+                            'termo_pesquisa': status_selecionado.upper()
+                        }
+                        st.rerun()
+
+                
+                
+                # 2. Tabela de Detalhe por Cliente (Item 10B) - RESPEITANDO OS FILTROS LATERAIS
+                st.markdown("##### 10 B. Detalhe de Clientes Ativos/Inativos no Período e Entidade Selecionados")
+                
+                # 1. Identificar clientes que pontuaram no período FILTRADO
+                clientes_ativos_no_periodo_filtrado = set(df_filtrado['CNPJ_CPF_LIMPO'].unique())
+                
+                # 2. Clientes Inativos: Estão no histórico da ENTIDADE, mas NÃO pontuaram no PERÍODO FILTRADO
+                clientes_inativos_no_periodo = clientes_historicos_na_entidade.difference(clientes_ativos_no_periodo_filtrado)
+
+                # 3. DataFrame de ATIVOS 
+                df_ativos = df_filtrado.groupby([COLUNA_ESPECIFICADOR, 'CNPJ_CPF_LIMPO']).agg(
+                    Qtd_Pedidos_Periodo=(COLUNA_PEDIDO, 'nunique'), 
+                    Ultima_Data_Compra=('Data da Venda', 'max') 
+                ).reset_index()
+                df_ativos['Status'] = 'ATIVO'
+
+                # 4. DataFrame de INATIVOS 
+                df_historico_relevante = df_dados_original[
+                    (df_dados_original['Loja'].isin(lojas_selecionadas)) &
+                    (df_dados_original['Segmento'].isin(segmentos_selecionados))
                 ].copy()
                 
-                if df_tabela_detalhe_exibicao.empty:
-                    st.info(f"Nenhum profissional encontrado para o termo: **{termo_pesquisa_atv}**.")
+                df_inativos_base = df_historico_relevante[df_historico_relevante['CNPJ_CPF_LIMPO'].isin(clientes_inativos_no_periodo)].copy()
+                
+                # Agrupamos o histórico relevante para pegar a última data de compra e nome para os inativos
+                df_inativos = df_inativos_base.groupby([COLUNA_ESPECIFICADOR, 'CNPJ_CPF_LIMPO']).agg(
+                    Ultima_Data_Compra=('Data da Venda', 'max') 
+                ).reset_index()
+                
+                df_inativos['Qtd_Pedidos_Periodo'] = 0
+                df_inativos['Status'] = 'INATIVO'
+
+                # Unifica Ativos e Inativos
+                df_detalhe = pd.concat([
+                    df_ativos.rename(columns={'CNPJ_CPF_LIMPO': 'CPF/CNPJ_LIMPO', COLUNA_ESPECIFICADOR: 'Nome'}),
+                    df_inativos.rename(columns={'CNPJ_CPF_LIMPO': 'CPF/CNPJ_LIMPO', COLUNA_ESPECIFICADOR: 'Nome'})
+                ], ignore_index=True)
+
+                # Junta o CPF/CNPJ original para exibição
+                df_cnpj_original_map = df_dados_original.groupby('CNPJ_CPF_LIMPO').agg({
+                    COLUNA_CNPJ_CPF: 'first' 
+                }).reset_index().rename(columns={'CNPJ_CPF_LIMPO': 'CPF/CNPJ_LIMPO', COLUNA_CNPJ_CPF: 'CPF/CNPJ Original'})
+                
+                df_detalhe = pd.merge(df_detalhe, df_cnpj_original_map, on='CPF/CNPJ_LIMPO', how='left')
+                
+                # Limpa colunas
+                df_detalhe.drop(columns=['CPF/CNPJ_LIMPO'], inplace=True)
+                df_detalhe.rename(columns={'CPF/CNPJ Original': 'CPF/CNPJ'}, inplace=True)
+                
+                # Ordena pelo status e depois pela quantidade de pedidos
+                df_detalhe.sort_values(by=['Status', 'Qtd_Pedidos_Periodo'], ascending=[False, False], inplace=True)
+
+                # --- CAMPO DE PESQUISA (Nome, CPF/CNPJ ou ATIVO/INATIVO) + INTERATIVIDADE DE CLIQUE ---
+                
+                # Obtém o termo de pesquisa inicial do estado, se houver
+                initial_search_value = st.session_state['filtro_status_ano']['termo_pesquisa']
+                
+                # Apenas limpa o termo de pesquisa no estado após ser usado no `st.text_input`
+                st.session_state['filtro_status_ano']['termo_pesquisa'] = ''
                     
-            # Formatação final da tabela de detalhe
-            df_tabela_detalhe_exibicao['Qtd de Pedidos no Período'] = df_tabela_detalhe_exibicao['Qtd_Pedidos_Periodo'].apply(formatar_milhar_br)
-            
-            # Formatação da Data (DD/MM/AAAA)
-            df_tabela_detalhe_exibicao['Última Data da Compra'] = df_tabela_detalhe_exibicao['Ultima_Data_Compra'].apply(
-                lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) else 'N/A'
-            )
-            
-            df_tabela_detalhe_exibicao.drop(columns=['Qtd_Pedidos_Periodo', 'Ultima_Data_Compra'], inplace=True)
-            
-            # Renomear colunas para exibição
-            df_tabela_detalhe_exibicao.columns = ['Nome do Profissional', 'Status', 'CPF/CNPJ', 'Qtd de Pedidos no Período', 'Última Data da Compra']
-            df_tabela_detalhe_exibicao = df_tabela_detalhe_exibicao[['Nome do Profissional', 'CPF/CNPJ', 'Status', 'Qtd de Pedidos no Período', 'Última Data da Compra']] # Reordenar
+                termo_pesquisa_atv = st.text_input(
+                    "Pesquisar Detalhe (Nome, CPF/CNPJ ou Status):",
+                    key='search_profissional_atv',
+                    value=initial_search_value, # Define o valor inicial com base no clique
+                    placeholder="Digite nome, CPF/CNPJ ou ATIVO/INATIVO"
+                )
+                
+                df_tabela_detalhe_exibicao = df_detalhe.copy()
 
-            # Função de estilização para Status
-            def style_status_row(row):
-                if row['Status'] == 'ATIVO':
-                    return ['color: #a3ffb1; font-weight: bold; background-color: #00800020'] * len(row) # Verde ajustado
-                elif row['Status'] == 'INATIVO':
-                    return ['color: #ff9999; font-weight: bold; background-color: #ff000020'] * len(row)
-                return [''] * len(row)
+                if termo_pesquisa_atv:
+                    termo_pesquisa_atv_lower = termo_pesquisa_atv.lower()
+                    
+                    # Filtra o DataFrame usando 3 colunas
+                    df_tabela_detalhe_exibicao = df_tabela_detalhe_exibicao[
+                        df_tabela_detalhe_exibicao['Nome'].astype(str).str.lower().str.contains(termo_pesquisa_atv_lower, na=False) |
+                        df_tabela_detalhe_exibicao['CPF/CNPJ'].astype(str).str.lower().str.contains(termo_pesquisa_atv_lower, na=False) |
+                        df_tabela_detalhe_exibicao['Status'].astype(str).str.lower().str.contains(termo_pesquisa_atv_lower, na=False)
+                    ].copy()
+                    
+                    if df_tabela_detalhe_exibicao.empty:
+                        st.info(f"Nenhum profissional encontrado para o termo: **{termo_pesquisa_atv}**.")
+                        
+                # Formatação final da tabela de detalhe
+                df_tabela_detalhe_exibicao['Qtd de Pedidos no Período'] = df_tabela_detalhe_exibicao['Qtd_Pedidos_Periodo'].apply(formatar_milhar_br)
+                
+                # Formatação da Data (DD/MM/AAAA)
+                df_tabela_detalhe_exibicao['Última Data da Compra'] = df_tabela_detalhe_exibicao['Ultima_Data_Compra'].apply(
+                    lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) else 'N/A'
+                )
+                
+                df_tabela_detalhe_exibicao.drop(columns=['Qtd_Pedidos_Periodo', 'Ultima_Data_Compra'], inplace=True)
+                
+                # Renomear colunas para exibição
+                df_tabela_detalhe_exibicao.columns = ['Nome do Profissional', 'Status', 'CPF/CNPJ', 'Qtd de Pedidos no Período', 'Última Data da Compra']
+                df_tabela_detalhe_exibicao = df_tabela_detalhe_exibicao[['Nome do Profissional', 'CPF/CNPJ', 'Status', 'Qtd de Pedidos no Período', 'Última Data da Compra']] # Reordenar
 
-            st.dataframe(
-                df_tabela_detalhe_exibicao.style
-                    .apply(lambda x: style_status_row(x), axis=1) # Aplica a cor em toda a linha com base no Status
-                    .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, 
-                                    subset=pd.IndexSlice[:, ['Status', 'Qtd de Pedidos no Período', 'Última Data da Compra']]),
-                use_container_width=True
-            )
-            
-            st.markdown("---")
+                # Função de estilização para Status
+                def style_status_row(row):
+                    if row['Status'] == 'ATIVO':
+                        return ['color: #a3ffb1; font-weight: bold; background-color: #00800020'] * len(row) # Verde ajustado
+                    elif row['Status'] == 'INATIVO':
+                        return ['color: #ff9999; font-weight: bold; background-color: #ff000020'] * len(row)
+                    return [''] * len(row)
+
+                st.dataframe(
+                    df_tabela_detalhe_exibicao.style
+                        .apply(lambda x: style_status_row(x), axis=1) # Aplica a cor em toda a linha com base no Status
+                        .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, 
+                                        subset=pd.IndexSlice[:, ['Status', 'Qtd de Pedidos no Período', 'Última Data da Compra']]),
+                    use_container_width=True
+                )
+                
+                st.markdown("---")
 
     # =======================================================================
     # ITEM 11. ANÁLISE DE VARIAÇÃO DE RANKING POR PROFISSIONAL 
