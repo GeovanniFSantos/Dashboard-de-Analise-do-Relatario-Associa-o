@@ -3,6 +3,8 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import numpy as np 
+# A biblioteca 'date' não é mais necessária, mas 'timedelta' pode ser útil.
+from datetime import date, timedelta 
 
 # ==============================================================================
 # IMPORTS DOS MÓDULOS (11 MÓDULOS)
@@ -59,7 +61,6 @@ if 'filtro_status_ano' not in st.session_state:
     st.session_state['filtro_status_ano'] = {'ano': None, 'status': None, 'termo_pesquisa': ''}
     
 # --- Funções de Callback para Resetar Estado ---
-# Mantemos a função, mas ela não será mais usada no Item 7 (foi removida do st.selectbox)
 def reset_lojas_selection():
     """
     Função de callback para resetar o estado de seleção de lojas.
@@ -75,6 +76,12 @@ df_dados_original, df_novos_cadastrados_original = carregar_e_tratar_dados(Relat
 # --- Aplicação Streamlit (Interface) ---
 
 if not df_dados_original.empty:
+    
+    # CRÍTICO: Garantir que 'Data da Venda' é datetime para evitar erros de comparação
+    if 'Data da Venda' in df_dados_original.columns:
+        df_dados_original['Data da Venda'] = pd.to_datetime(df_dados_original['Data da Venda'], errors='coerce')
+        # Remove NaT após o carregamento (já deve ter sido feito em dados.py, mas como seguro)
+        df_dados_original.dropna(subset=['Data da Venda'], inplace=True)
     
     # Cria uma cópia inicial que será usada como base para a filtragem de LOJA/SEGMENTO
     df_base_para_filtros = df_dados_original.copy()
@@ -93,7 +100,8 @@ if not df_dados_original.empty:
     
     # CRÍTICO: Inicialização de todas as variáveis de seleção no bloco principal.
     temporadas_selecionadas_exib = []
-    meses_selecionados_exib = [] 
+    meses_selecionados_exib = [] # VARIÁVEL DE MÊS RESTAURADA
+    
     lojas_selecionadas = []
     segmentos_selecionados = []
     
@@ -109,7 +117,8 @@ if not df_dados_original.empty:
         if temporadas_selecionadas_exib:
             df_base_para_filtros = df_base_para_filtros[df_base_para_filtros['Temporada_Exibicao'].isin(temporadas_selecionadas_exib)].copy()
         
-    # 2. Filtro por Mês (Estrutura Reforçada) - MULTISELECIONÁVEL
+
+    # 2. Filtro por Mês (RESTAUROU O MULTISELECT DE MÊS)
     if 'Mês_Exibicao' in df_base_para_filtros.columns:
         # AQUI usamos dropna() para remover meses que não foram mapeados (os 'esquisitos')
         meses_unicos_exib = sorted(df_base_para_filtros['Mês_Exibicao'].dropna().unique())
@@ -125,9 +134,8 @@ if not df_dados_original.empty:
         if meses_selecionados_exib:
              df_base_para_filtros = df_base_para_filtros[df_base_para_filtros['Mês_Exibicao'].isin(meses_selecionados_exib)].copy()
 
-
-    # FIM DA FILTRAGEM DE DATA. df_base_para_filtros contem apenas os dados do período seleccionado.
-    # Criamos o df_total_periodo aqui, que é a base para cálculos gerais no período.
+    
+    # O df_total_periodo agora contém os filtros de Temporada e Mês
     df_total_periodo = df_base_para_filtros.copy()
     
     
@@ -449,7 +457,7 @@ if not df_dados_original.empty:
 
             df_pivot_pontos = df_pivot_pontos.drop(columns=['Evolução Pontos Valor'])
             
-            st.markdown(f"**Nota:** A coluna de Evolução Pontos compara o crescimento mensal entre a **{t_atual_col.replace('Temporada ', 'T')}** (Atual) e a **{t_anterior_col.replace('Temporada ', 'T')}** (Anterior) selecionadas.")
+            st.markdown(f"**Nota:** A coluna de Evolução Pontos compara o crescimento mensal entre a **{t_atual_col.replace('Temporada ', 'T')}** (Atual) e a **{t_anterior_col.replace('Temporada ', 'T')}** (Anterior) seleccionadas.")
 
         else:
             
@@ -477,6 +485,7 @@ if not df_dados_original.empty:
              )
 
     st.markdown("---")
+
 
     # =======================================================================
     # ITEM 4. Pontuação Total por Temporada (Comparativo de Volume)
@@ -508,7 +517,7 @@ if not df_dados_original.empty:
                 text='Pontuação Total' 
             )
             
-            fig.update_traces(texttemplate='%{text:,.0f}', textposition='outside')
+            fig.update_traces(texttemplate='%{text:,.0f}') 
             fig.update_layout(
                 yaxis_title="Pontuação Total",
                 xaxis_title="Temporada",
@@ -626,7 +635,7 @@ if not df_dados_original.empty:
             color='Mês',
             text='Pedidos'
         )
-        fig_pedidos_mes.update_traces(texttemplate='%{text:,.0f}', textposition='outside') 
+        fig_pedidos_mes.update_traces(texttemplate='%{text:,.0f}') 
         fig_pedidos_mes.update_layout(xaxis_title="Mês", yaxis_title="Pedidos Únicos")
         st.plotly_chart(fig_pedidos_mes, use_container_width=True)
 
@@ -726,13 +735,8 @@ if not df_dados_original.empty:
                 
                 df_segmentos_detalhe.sort_values(by='Qtd_Pedidos_Unicos', ascending=False, inplace=True)
                 
-                # 3.3. Exibe o detalhe em forma de gráfico de barras e tabela
-                
-                if df_segmentos_detalhe.empty:
-                    st.info(f"Nenhum pedido encontrado para o Segmento/Loja filtrado no período {mes_selecionado_exib} / {temporada_selecionada_exib}.")
-                else:
                     # Gráfico
-                    fig_detalhe = px.bar(
+                fig_detalhe = px.bar(
                         df_segmentos_detalhe,
                         x='Segmento',
                         y='Qtd_Pedidos_Unicos',
@@ -740,12 +744,12 @@ if not df_dados_original.empty:
                         color='Segmento',
                         text='Qtd_Pedidos_Unicos'
                     )
-                    fig_detalhe.update_traces(texttemplate='%{text:,.0f}', textposition='outside')
-                    st.plotly_chart(fig_detalhe, use_container_width=True)
+                fig_detalhe.update_traces(texttemplate='%{text:,.0f}')
+                st.plotly_chart(fig_detalhe, use_container_width=True)
                     
                     # Tabela
-                    st.markdown("##### Tabela Detalhada por Segmento")
-                    st.dataframe(
+                st.markdown("##### Tabela Detalhada por Segmento")
+                st.dataframe(
                         df_segmentos_detalhe.style
                             .format({
                                 # USA FUNÇÃO IMPORTADA formatar_milhar_br
@@ -898,14 +902,11 @@ if not df_dados_original.empty:
 
         st.subheader(f"7. Análise Consolidada de Lojas ({t_atual_tx} vs {t_anterior_tx})")
         
-        # === NOVOS SELETORES DE FILTRO DE BASE (PONTO 3) ===
+        # --- FILTRO DE LOJAS BASE (SIMPLIFICADO) ---
         
         # 1. Determina a lista de lojas ativas no período filtrado pela sidebar
         lojas_ativas_na_base = sorted(df_filtrado['Loja'].unique())
         
-        # CRÍTICO: Removemos o seletor de Temporada BASE e a função de callback
-        # para que a lista de lojas seja sempre baseada no filtro de Mês/Segmento/Loja da SIDEBAR
-            
         # 2. Multiselect de Lojas
         # --- INÍCIO DO TRATAMENTO CRÍTICO DE DEFAULT ---
         # 1. Tenta pegar a seleção anterior do estado
@@ -916,7 +917,7 @@ if not df_dados_original.empty:
              # Inicializa com a lista completa de lojas ativas na base selecionada
              st.session_state['item7_lojas_select'] = lojas_ativas_na_base
         
-        # 3. Garante que a seleção atual respeite as opções DISPONÍVEIS e as use como default
+        # 3. Garante que a seleção atual respeite as opções DISPONÍVEIS
         lojas_para_usar = [
             loja for loja in st.session_state['item7_lojas_select'] if loja in lojas_ativas_na_base
         ]
@@ -992,7 +993,8 @@ if not df_dados_original.empty:
         # --- PARTE 2: Separação por Terços ---
         
         # Acessa a coluna 'Total de Lojas' e pega o valor total da base de análise
-        total_lojas_base_tercos = df_rank_quantitativo['Total de Lojas'].iloc[0] * 3 # Total de lojas na base de terços
+        # CORREÇÃO: O valor de Total de Lojas já é a contagem de lojas por terço, não precisa multiplicar por 3.
+        total_lojas_base_tercos = df_rank_quantitativo['Total de Lojas'].sum()
         
         # Ranking Quantitativo (Contagem de Lojas) - PONTO 2: Contagem igualitária de lojas
         st.markdown(f"###### 7.2. Ranking por Terços (Quantitativo de Lojas) - Base: {total_lojas_base_tercos} Lojas")
@@ -1113,6 +1115,9 @@ if not df_dados_original.empty:
         # A temporada atual de comparação será a mais recente na base filtrada local
         temporada_atual_num_t8 = max(temporadas_nums_selecionadas) if temporadas_nums_selecionadas else 0
         
+        # Corrigindo a base para a temporada anterior:
+        temporada_anterior_num_t8 = int(temporada_atual_num_t8) - 1 if int(temporada_atual_num_t8) > 0 else 0
+        
         
         # Criamos a tabela de resumo para o topo
         df_resumo_cat = df_desempenho.groupby('Categoria').agg(
@@ -1131,7 +1136,7 @@ if not df_dados_original.empty:
              # CRÍTICO: CHAMA A FUNÇÃO CORRIGIDA COM OS FILTROS DE LOJA/SEGMENTO
              pontuacao_anterior = get_pontuacao_temporada_anterior(
                  df_dados_original, 
-                 temporada_atual_num_t8, # Usa a temporada local
+                 temporada_anterior_num_t8, # <<-- CORREÇÃO: Usar a temporada ANTERIOR para buscar a base de comparação
                  lojas_selecionadas, 
                  segmentos_selecionados, 
                  categoria
@@ -1170,9 +1175,11 @@ if not df_dados_original.empty:
         
         # CÁLCULO DA EVOLUÇÃO TOTAL (Todos os profissionais no filtro de Segmento/Loja)
         pontuacao_total_atual = df_base_item8['Pontos'].sum() # Variável corretamente definida
-        pontuacao_total_anterior = get_pontuacao_temporada_anterior( # USA FUNÇÃO IMPORTADA
+        
+        # CRÍTICO: Usamos a T_Atual para achar o valor da T_Anterior (corrigido no módulo)
+        pontuacao_total_anterior = get_pontuacao_temporada_anterior(
              df_dados_original, 
-             temporada_atual_num_t8, # Usa a temporada local
+             temporada_atual_num_t8, # Usamos a T_Atual para achar o valor da T_Anterior (corrigido no módulo)
              lojas_selecionadas, 
              segmentos_selecionados, 
              categoria=None

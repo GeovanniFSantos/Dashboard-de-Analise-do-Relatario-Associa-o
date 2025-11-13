@@ -37,19 +37,21 @@ def calcular_categorias(df_base, df_agrupado):
 # Função para obter a pontuação da temporada anterior (corrigida)
 def get_pontuacao_temporada_anterior(df_original_completo, temporada_atual_num, lojas_selecionadas, segmentos_selecionados, categoria=None):
     """Obtém a pontuação total ou por categoria da temporada anterior com base nos filtros atuais."""
+    
+    # 1. CRÍTICO: Calcula a temporada anterior corretamente
     temporada_anterior_num = int(temporada_atual_num) - 1
     temporada_anterior_nome = f"Temporada {temporada_anterior_num}"
     
     if temporada_anterior_num <= 0:
         return 0
         
-    # 1. Filtra o DF original apenas para a temporada anterior
+    # 2. Filtra o DF original apenas para a temporada anterior
     df_anterior_base = df_original_completo[df_original_completo['Temporada_Exibicao'] == temporada_anterior_nome].copy()
     
     if df_anterior_base.empty:
         return 0
         
-    # 2. APLICA O FILTRO DE LOJA/SEGMENTO DA TEMPORADA ATUAL
+    # 3. APLICA O FILTRO DE LOJA/SEGMENTO DA TEMPORADA ATUAL
     df_anterior_filtrado = df_anterior_base[
         (df_anterior_base['Loja'].isin(lojas_selecionadas)) &
         (df_anterior_base['Segmento'].isin(segmentos_selecionados))
@@ -58,7 +60,7 @@ def get_pontuacao_temporada_anterior(df_original_completo, temporada_atual_num, 
     if df_anterior_filtrado.empty:
         return 0
 
-    # 3. Calcula as categorias no DF anterior (para agrupar por categoria)
+    # 4. Calcula as categorias no DF anterior (para agrupar por categoria)
     df_anterior_agrupado = df_anterior_filtrado.groupby(COLUNA_ESPECIFICADOR)['Pontos'].sum().reset_index()
     df_anterior_agrupado.columns = [COLUNA_ESPECIFICADOR, 'Pontuacao_Total']
     
