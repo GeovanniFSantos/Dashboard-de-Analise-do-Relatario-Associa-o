@@ -1174,14 +1174,14 @@ if not df_dados_original.empty:
             categoria = row['Categoria']
             pontuacao_atual = row['Pontuacao_Categoria']
             
-            # CRÍTICO: CHAMA A FUNÇÃO CORRIGIDA COM OS FILTROS DE LOJA/SEGMENTO E MÊS
+            # CRÍTICO: CHAMA A FUNÇÃO CORRIGIDA COM OS FILTROS DE LOJA/SEGMENTO E MÊS (USANDO KEYWORD)
             pontuacao_anterior = get_pontuacao_temporada_anterior(
                 df_dados_original, 
                 temporada_anterior_num_t8, 
                 lojas_selecionadas, 
                 segmentos_selecionados, 
-                meses_selecionados_exib, # PASSANDO O FILTRO DE MÊS
-                categoria
+                meses_selecionados_exib, 
+                categoria=categoria # FORÇANDO KEYWORD
             )
             
             # Calcula o crescimento raw (USA FUNÇÃO IMPORTADA calcular_evolucao_pct)
@@ -1224,8 +1224,7 @@ if not df_dados_original.empty:
              temporada_atual_num_t8, 
              lojas_selecionadas, 
              segmentos_selecionados, 
-             meses_selecionados_exib, # PASSANDO O FILTRO DE MÊS
-             categoria=None
+             meses_selecionados_exib # Argumento meses_selecionados_exib passado
            )
         
         # Calcula o crescimento total raw (USA FUNÇÃO IMPORTADA calcular_evolucao_pct)
