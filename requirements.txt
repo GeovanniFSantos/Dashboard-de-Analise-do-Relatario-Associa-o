@@ -2,4 +2,4 @@ pandas
 streamlit
 plotly
 numpy
-openpyxl
+openpyxl==3.0.10
