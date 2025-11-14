@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import numpy as np 
-# A biblioteca 'date' não é mais necessária, mas 'timedelta' pode ser útil.
+# A biblioteca 'date' não é mais necessária, mas a 'timedelta' pode ser útil.
 from datetime import date, timedelta 
 
 # ==============================================================================
@@ -222,7 +222,7 @@ if not df_dados_original.empty:
     # ITEM 1. Comparativo de Desempenho por Temporada
     # =======================================================================
     
-    # 1. Obter a lista de todas as temporadas para as colunas do pivô
+    # 1. Obter a lista de todas as temporadas para os seletores
     # Já usamos 'todas_temporadas_disponiveis_unicas'
     
     # 2. Calcular Métricas Temporais para a Base Filtrada (df_filtrado) - USA FUNÇÃO IMPORTADA
@@ -1137,13 +1137,13 @@ if not df_dados_original.empty:
             Documentos_Para_Separar=(COLUNA_CNPJ_CPF, lambda x: x.astype(str).unique().tolist()),
         ).reset_index()
 
-        # NOVO PASSO: Aplica a função de separação para criar as colunas CPF e CNPJ
+        # CRÍTICO: Uso de Series para garantir 2 colunas e tratar o erro de "Columns must be same length as key"
+        # O resultado é uma tupla de (str_cpfs, str_cnpjs) para cada linha
         df_vinculos[['CPFs Vinculados', 'CNPJs Vinculados']] = df_vinculos['Documentos_Para_Separar'].apply(
             lambda x: pd.Series(separate_documents(x))
         )
         
         df_vinculos.drop(columns=['Documentos_Para_Separar'], inplace=True) # Remove a coluna intermediária
-
 
         df_desempenho = pd.merge(df_desempenho, df_vinculos, on=COLUNA_CHAVE_CONSOLIDADA, how='left')
         
@@ -1174,12 +1174,13 @@ if not df_dados_original.empty:
             categoria = row['Categoria']
             pontuacao_atual = row['Pontuacao_Categoria']
             
-            # CRÍTICO: CHAMA A FUNÇÃO CORRIGIDA COM OS FILTROS DE LOJA/SEGMENTO
+            # CRÍTICO: CHAMA A FUNÇÃO CORRIGIDA COM OS FILTROS DE LOJA/SEGMENTO E MÊS
             pontuacao_anterior = get_pontuacao_temporada_anterior(
                 df_dados_original, 
-                temporada_anterior_num_t8, # <<-- CORREÇÃO: Usar a temporada ANTERIOR para buscar a base de comparação
+                temporada_anterior_num_t8, 
                 lojas_selecionadas, 
                 segmentos_selecionados, 
+                meses_selecionados_exib, # PASSANDO O FILTRO DE MÊS
                 categoria
             )
             
@@ -1220,9 +1221,10 @@ if not df_dados_original.empty:
         # CRÍTICO: Usamos a T_Atual para achar o valor da T_Anterior (corrigido no módulo)
         pontuacao_total_anterior = get_pontuacao_temporada_anterior(
              df_dados_original, 
-             temporada_atual_num_t8, # Usamos a T_Atual para achar o valor da T_Anterior (corrigido no módulo)
+             temporada_atual_num_t8, 
              lojas_selecionadas, 
              segmentos_selecionados, 
+             meses_selecionados_exib, # PASSANDO O FILTRO DE MÊS
              categoria=None
            )
         
@@ -1369,19 +1371,79 @@ if not df_dados_original.empty:
         # 7. TABELA DE DESEMPENHO INDIVIDUAL (Matriz)
         st.markdown("##### Tabela de Desempenho Individual (Agrupado por Entidade Consolidada)")
         
-        # Prepara a tabela para exibição 
-        df_tabela_exibicao = df_tabela_exibicao[[
-            COLUNA_CHAVE_CONSOLIDADA, # 1. Chave Consolidada
-            'CNPJs Vinculados',       # 2. NOVO: CNPJs
-            'CPFs Vinculados',        # 3. NOVO: CPFs
-            'Especificadores_Vinculados', # 4. Nomes Vinculados
-            'Pontuacao_Total',        # 5. Pontuação
-            'Qtd_Pedidos',            # 6. Qtd Pedidos
-            'Categoria'               # 7. Categoria
-        ]].copy()
+        # --- LÓGICA DA EVOLUÇÃO T VS T-1 (NOVO CÁLCULO) ---
         
-        # Renomear colunas para o Português para exibição
-        df_tabela_exibicao.columns = ['Chave de Consolidação', 'CNPJs Vinculados', 'CPFs Vinculados', 'Nomes Vinculados', 'Pontuação', 'Qtd de Pedidos', 'Categoria'] 
+        # 1. Identificar T-1 para busca de pontuação, respeitando o filtro de Segmento/Loja da sidebar
+        temporada_anterior_num = int(temporada_atual_num_t8) - 1 if int(temporada_atual_num_t8) > 0 else 0
+        temporada_anterior_nome = f"Temporada {temporada_anterior_num}"
+        
+        df_base_t_anterior = df_dados_original[
+            (df_dados_original['Temporada_Exibicao'] == temporada_anterior_nome) &
+            (df_dados_original['Loja'].isin(lojas_selecionadas)) & 
+            (df_dados_original['Segmento'].isin(segmentos_selecionados)) &
+            (df_dados_original['Mês_Exibicao'].isin(meses_selecionados_exib)) # NOVO FILTRO DE MÊS
+        ].copy()
+
+        # 2. Agrupar a pontuação da T-1 pela CHAVE CONSOLIDADA
+        df_pontos_t_anterior = df_base_t_anterior.groupby(COLUNA_CHAVE_CONSOLIDADA)['Pontos'].sum().reset_index()
+        df_pontos_t_anterior.columns = [COLUNA_CHAVE_CONSOLIDADA, 'Pontuacao_T_Anterior']
+        
+        # 3. Merge dos pontos T-1 no DataFrame de exibição
+        df_tabela_exibicao = pd.merge(
+            df_tabela_exibicao,
+            df_pontos_t_anterior,
+            on=COLUNA_CHAVE_CONSOLIDADA,
+            how='left'
+        ).fillna({'Pontuacao_T_Anterior': 0})
+        
+        # 4. Calcular a Evolução %
+        df_tabela_exibicao['Evolução %'] = df_tabela_exibicao.apply(
+            lambda row: calcular_evolucao_pct(row['Pontuacao_Total'], row['Pontuacao_T_Anterior']), axis=1
+        )
+        
+        # 5. Formatar a coluna de Evolução % (Texto e Cor)
+        
+        # Mapeamento do nome da coluna de evolução
+        nome_coluna_evolucao_item8 = f"Evolução T{temporada_atual_num_t8} vs T{temporada_anterior_num_t8}"
+        df_tabela_exibicao.rename(columns={'Evolução %': nome_coluna_evolucao_item8}, inplace=True)
+        
+        def format_evolucao_texto(val):
+            if val > 0.0001:
+                return f"{val:.1%} ↑"
+            elif val < -0.0001:
+                return f"{val:.1%} ↓"
+            else:
+                return "0.0% ≈"
+                
+        df_tabela_exibicao[nome_coluna_evolucao_item8 + ' Texto'] = df_tabela_exibicao[nome_coluna_evolucao_item8].apply(format_evolucao_texto)
+
+        # 6. Preparar a tabela para exibição final (Selecionar Colunas)
+        
+        # Colunas internas que existem em df_tabela_exibicao
+        colunas_internas_existentes = [
+            COLUNA_CHAVE_CONSOLIDADA, 
+            'CNPJs Vinculados', 'CPFs Vinculados', 
+            'Especificadores_Vinculados', # MUDANÇA DE NOME AQUI
+            'Pontuacao_Total', nome_coluna_evolucao_item8 + ' Texto', 'Qtd_Pedidos', 'Categoria'
+        ]
+        
+        df_tabela_exibicao = df_tabela_exibicao[colunas_internas_existentes].copy()
+
+        # Renomear as colunas para o Português para exibição
+        df_tabela_exibicao.columns = ['Chave de Consolidação', 'CNPJs Vinculados', 'CPFs Vinculados', 'Nomes Vinculados', 'Pontuação', 'Evolução T vs T-1', 'Qtd de Pedidos', 'Categoria'] 
+
+        # Função de estilização para a coluna de Evolução
+        def style_evolucao_individual(val):
+            # Obtém o valor numérico (raw) da evolução
+            raw_value = val.replace('↑', '').replace('↓', '').replace('%', '').replace('≈', '')
+            raw_value = pd.to_numeric(raw_value.replace(',', '.'), errors='coerce') / 100 
+            
+            if not isinstance(raw_value, (int, float)): return ''
+            if raw_value > 0.0001:
+                return 'color: #a3ffb1; font-weight: bold' # Verde ajustado
+            elif raw_value < -0.0001:
+                return 'color: #ff9999; font-weight: bold' # Vermelho
+            return 'color: #b3e6ff; font-weight: bold' # Estável/Zero
         
         # Formatar a coluna Pontuação 
         df_tabela_exibicao['Pontuação'] = df_tabela_exibicao['Pontuação'].apply(
@@ -1392,11 +1454,20 @@ if not df_dados_original.empty:
              lambda x: formatar_milhar_br(x)
         )
         
-        # Função para estilizar as cores das categorias (USA FUNÇÃO IMPORTADA style_categoria_texto)
-        st.dataframe(df_tabela_exibicao.style.applymap(style_nome_categoria, subset=['Categoria']) 
-                                             .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, 
-                                                             subset=pd.IndexSlice[:, ['Pontuação', 'Qtd de Pedidos', 'Categoria']]),
-                                                             use_container_width=True)
+        # Exibição Final
+        st.dataframe(
+            df_tabela_exibicao.style
+                .applymap(style_nome_categoria, subset=['Categoria']) 
+                .applymap(style_evolucao_individual, subset=['Evolução T vs T-1'])
+                .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, 
+                                subset=pd.IndexSlice[:, ['Pontuação', 'Qtd de Pedidos', 'Categoria', 'Evolução T vs T-1']]),
+            use_container_width=True
+        )
+        
+        # NOTA DE ESCLARECIMENTO
+        st.markdown(f"""
+        **Nota:** A coluna **Evolução T vs T-1** compara a pontuação consolidada da Entidade na temporada atual selecionada ({temporada_selecionada_t8}) com a pontuação que ela teve na temporada anterior ({temporada_anterior_nome}) **dentro do mesmo Segmento/Loja filtrado**.
+        """)
         
         # 10. DESEMPENHO DE NOVOS CADASTROS (Antigo 9)
         if COLUNA_ESPECIFICADOR in df_filtrado.columns:
