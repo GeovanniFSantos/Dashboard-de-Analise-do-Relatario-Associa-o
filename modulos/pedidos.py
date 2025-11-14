@@ -50,14 +50,21 @@ def calcular_pivo_pedidos(df_filtrado, temporadas_selecionadas_exib):
     
 # Função para calcular o Pivô de Novos Clientes (Item 9A)
 def calcular_pivo_novos_clientes(df_dados_original, df_novos_filtrados, meses_selecionados_exib, temporadas_selecionadas_exib):
-    """Calcula o pivô de Novos Profissionais Pontuados por Mês e Temporada."""
+    """
+    Calcula o pivô de Novos Profissionais Pontuados por Mês e Temporada.
+    AGORA USA A NOVA LÓGICA DE COORTE: Temporada de Venda == Temporada de Cadastro
+    """
     
-    # 1. Agrupamento e Soma (Pivô da base completa para obter todas as colunas)
-    df_pivot_base_novos_full = df_dados_original[df_dados_original['Novo_Cadastrado'] == True].pivot_table(
+    # O df_novos_filtrados JÁ CONTÉM a lógica de coorte (Novo_Cadastrado == True)
+    # O que precisamos é contar os clientes únicos por Mês/Temporada, apenas para quem tem o flag True
+    df_base_coorte_ativa = df_novos_filtrados[df_novos_filtrados['Novo_Cadastrado'] == True].copy()
+    
+    # 1. Agrupamento para a contagem de clientes ÚNICOS (CNPJ_CPF_LIMPO)
+    df_pivot_base_novos_full = df_base_coorte_ativa.pivot_table(
         index='Mês_Exibicao', 
         columns='Temporada_Exibicao', 
-        values='Novo_Cadastrado', 
-        aggfunc='sum',
+        values='CNPJ_CPF_LIMPO', # Conta o documento limpo (a identidade)
+        aggfunc='nunique', # Contagem de clientes ÚNICOS (identidades)
         fill_value=0 
     ).reset_index()
 
@@ -65,30 +72,22 @@ def calcular_pivo_novos_clientes(df_dados_original, df_novos_filtrados, meses_se
     df_pivot_novos_filtrado = df_pivot_base_novos_full[df_pivot_base_novos_full['Mês_Exibicao'].isin(meses_selecionados_exib)].copy()
     
     # 3. Tratamento de Colunas e Ordenação 
-    colunas_temporada_full_novos = [col for col in df_pivot_base_novos_full.columns if col.startswith('Temporada')]
+    colunas_temporada_full_novos = [col for col in df_pivot_novos_filtrado.columns if col.startswith('Temporada')]
     
     colunas_temporada_sorted_num_novos = sorted([
         col for col in colunas_temporada_full_novos if col != 'Temporada 0' and len(col.split(' ')) > 1
     ], key=lambda x: int(x.split(' ')[1]))
     
-    # 4. Cálculo dos VALORES FILTRADOS (com base no df_novos_filtrados)
-    df_valores_filtrados_novos = df_novos_filtrados.pivot_table(
-        index='Mês_Exibicao',
-        columns='Temporada_Exibicao',
-        values='Novo_Cadastrado',
-        aggfunc='sum',
-        fill_value=0
-    )
-    
     # Inicializa o DF de novos clientes final
     df_pivot_novos = df_pivot_novos_filtrado[['Mês_Exibicao']].copy()
     
     for col in colunas_temporada_sorted_num_novos:
-        df_pivot_novos[col] = 0
-        
+        # Inclui apenas as colunas que estão na seleção lateral
         if col in temporadas_selecionadas_exib:
-            if col in df_valores_filtrados_novos.columns:
-                 df_pivot_novos[col] = df_pivot_novos['Mês_Exibicao'].map(df_valores_filtrados_novos[col].to_dict()).fillna(0)
+            if col in df_pivot_novos_filtrado.columns:
+                df_pivot_novos[col] = df_pivot_novos_filtrado[col]
+            else:
+                df_pivot_novos[col] = 0.0
 
     
     # Reordenação dos Meses (Julho a Junho)
@@ -115,9 +114,10 @@ def calcular_pivo_novos_clientes(df_dados_original, df_novos_filtrados, meses_se
         t_atual_col_cli_raw = sorted(temporadas_selecionadas_exib, key=lambda x: int(x.split(' ')[1]))[-1].replace('Temporada ', 'Clientes T')
         t_anterior_col_cli_raw = sorted(temporadas_selecionadas_exib, key=lambda x: int(x.split(' ')[1]))[-2].replace('Temporada ', 'Clientes T')
         
+        # Função interna movida para o escopo para ser aplicada corretamente
         def calcular_evolucao_contagem(row):
-            valor_atual = row[t_atual_col_cli_raw]
-            valor_anterior = row[t_anterior_col_cli_raw]
+            valor_atual = row.get(t_atual_col_cli_raw, 0)
+            valor_anterior = row.get(t_anterior_col_cli_raw, 0)
             
             if valor_atual > valor_anterior:
                 return "Evolução Positiva", 1
@@ -126,9 +126,12 @@ def calcular_pivo_novos_clientes(df_dados_original, df_novos_filtrados, meses_se
             else:
                 return "Evolução Estável", 0 
                 
-        
-        df_pivot_novos['Evolução Qualitativa Texto'], df_pivot_novos['Evolução Qualitativa Valor'] = zip(*df_pivot_novos.apply(calcular_evolucao_contagem, axis=1))
+        # Aplica a função de cálculo nas linhas mensais
+        df_pivot_novos[['Evolução Qualitativa Texto', 'Evolução Qualitativa Valor']] = df_pivot_novos.apply(
+            lambda row: calcular_evolucao_contagem(row), axis=1, result_type='expand'
+        )
 
+        # Atualiza o nome da coluna de exibição final
         nome_coluna_evolucao_cli = f"Evolução Clientes ({t_atual_col_cli_raw.replace('Clientes T', 'T')} vs {t_anterior_col_cli_raw.replace('Clientes T', 'T')})"
         df_pivot_novos.rename(columns={'Evolução Qualitativa Texto': nome_coluna_evolucao_cli}, inplace=True)
         colunas_display_final_cli = colunas_clientes_sorted + [nome_coluna_evolucao_cli] 
@@ -146,17 +149,22 @@ def calcular_pivo_novos_clientes(df_dados_original, df_novos_filtrados, meses_se
     
     # CÁLCULO DA EVOLUÇÃO TOTAL QUALITATIVA (Se a coluna existir)
     if 'Evolução Qualitativa Valor' in df_pivot_novos.columns and 'Total' in df_pivot_novos.index:
+        # Recalcula o total apenas para as colunas relevantes
         total_atual_cli = df_pivot_novos.loc[df_pivot_novos.index != 'Total', t_atual_col_cli_raw].sum() 
         total_anterior_cli = df_pivot_novos.loc[df_pivot_novos.index != 'Total', t_anterior_col_cli_raw].sum() 
 
         if total_atual_cli > total_anterior_cli:
             evolucao_texto_total_cli = "Evolução Positiva"
+            evolucao_valor_total_cli = 1
         elif total_atual_cli < total_anterior_cli:
             evolucao_texto_total_cli = "Evolução Negativa"
+            evolucao_valor_total_cli = -1
         else:
             evolucao_texto_total_cli = "Evolução Estável"
+            evolucao_valor_total_cli = 0
 
+        # Atribui o resultado na linha Total
         df_pivot_novos.loc['Total', nome_coluna_evolucao_cli] = evolucao_texto_total_cli
-        df_pivot_novos.loc['Total', 'Evolução Qualitativa Valor'] = 0 # Valor fictício para o estilo
+        df_pivot_novos.loc['Total', 'Evolução Qualitativa Valor'] = evolucao_valor_total_cli
 
     return df_pivot_novos, colunas_display_final_cli, nome_coluna_evolucao_cli
