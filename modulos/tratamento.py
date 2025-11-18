@@ -17,7 +17,7 @@ def style_total_pontuacao(row):
     """Estilo para aplicar cor de fundo escuro e texto branco na linha 'Total'."""
     # Estilo da linha Total, verificando o nome do índice (ou o valor da primeira coluna se não for indexado)
     if row.name == 'Total' or (isinstance(row.iloc[0], str) and row.iloc[0] == 'Total'):
-        return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
+        return ['font-weight: bold;'] * len(row)
     return [''] * len(row)
 
 def calcular_evolucao_pct(atual, anterior):
@@ -29,12 +29,11 @@ def calcular_evolucao_pct(atual, anterior):
 
 def style_nome_categoria(val):
     cores = {
-        'Diamante': 'color: #b3e6ff; font-weight: bold',  
-        'Esmeralda': 'color: #a3ffb1; font-weight: bold', # Verde ajustado
-        'Ruby': 'color: #ff9999; font-weight: bold', 
-        'Topázio': 'color: #ffe08a; font-weight: bold', 
-        'Pro': 'color: #d1d1d1; font-weight: bold', 
-        'Total': 'color: #ffffff; font-weight: bold; background-color: #333333', 
+        'Diamante': 'color: #004d80; font-weight: bold',  
+        'Esmeralda': 'color: #4EC7A0; font-weight: bold', # Verde ajustado
+        'Ruby': 'color: #9B111E; font-weight: bold', 
+        'Topázio': 'color: #FFD700; font-weight: bold', 
+        'Pro': 'color: #d3d3d3; font-weight: bold', 
     }
     return cores.get(val, '')
 

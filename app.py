@@ -205,48 +205,22 @@ if not df_dados_original.empty:
 
     # --------------------------------------------------------------------------
     # MÉTRICAS CHAVE (KPIs no topo)
-    # --------------------------------------------------------------------------
-    st.subheader("Métricas Chave (KPIs)")
-    
+    # --------------------------------------------------------------------------    
     # CÓDIGO HTML/CSS PARA AUMENTAR FONTES NOS KPIs
     st.markdown(f"""
         <style>
             /* Ajusta o valor principal (número) */
             div[data-testid="stMetricValue"] {{
-                font-size: 28px !important; /* Aumento ligeiro para manter a distinção */
+                font-size: 22px !important; /* Aumento ligeiro para manter a distinção */
             }}
             /* Ajusta o label (Texto de Rótulo) */
             div[data-testid="stMetricLabel"] {{
-                font-size: 18px !important; /* MUDANÇA: Aumentado para 18px */
+                font-size: 19px !important; /* MUDANÇA: Aumentado para 18px */
                 text-align: center;
                 font-weight: bold;
             }}
         </style>
         """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(
-            label="Soma Total de Pontos (Filtrado)",
-            value=formatar_milhar_br(pontos_filtro)
-        )
-        
-    with col2:
-        st.metric(
-            label="Total de Pedidos Lançados (Filtrado)",
-            value=formatar_milhar_br(pedidos_filtro)
-        )
-
-    with col3:
-        st.metric(
-            label="Total de Pessoas Pontuadas (Filtrado)",
-            value=formatar_milhar_br(df_filtrado['CNPJ_CPF_LIMPO'].nunique())
-        )
-        
-    st.markdown("---")
-
-
     # =======================================================================
     # ITEM 1. Comparativo de Desempenho por Temporada
     # =======================================================================
@@ -278,7 +252,7 @@ if not df_dados_original.empty:
                 .set_table_styles([
                     {'selector': 'th.col_heading.level0.col_heading_level0_0', 'props': [('background-color', '#1E90FF'), ('color', 'white')]},
                     {'selector': 'th.col_heading.level1', 'props': [('font-size', STYLE_FONT_SIZE)]}, # MUDANÇA: Usa STYLE_FONT_SIZE (18px)
-                    {'selector': 'th.row_heading', 'props': [('background-color', '#333333'), ('color', 'white'), ('font-weight', 'bold'), ('font-size', STYLE_FONT_SIZE)]}, # MUDANÇA: Usa STYLE_FONT_SIZE (18px)
+                    {'selector': 'th.row_heading', 'props': [('background-color', "#333333"), ('color', 'white'), ('font-weight', 'bold'), ('font-size', STYLE_FONT_SIZE)]}, # MUDANÇA: Usa STYLE_FONT_SIZE (18px)
                 ])
                 .set_properties(**STYLE_TABLE_PROPS, subset=pd.IndexSlice[:, :]), # APLICA ESTILO GLOBAL (TAMANHO + CENTRALIZAÇÃO)
             use_container_width=True
@@ -409,7 +383,7 @@ if not df_dados_original.empty:
     def style_participacao(val):
         # Agora, a linha 'Total' é sempre o último índice do DataFrame resetado (df_exibir_categorias.index[-1])
         if val.name == df_exibir_categorias.index[-1]:
-            return ['font-weight: bold; background-color: #333333; color: white'] * len(val)
+            return ['font-weight: bold;'] * len(val)
 
         return ['color: #d1d1d1; font-weight: bold'] * len(val)
         
@@ -473,20 +447,20 @@ if not df_dados_original.empty:
             def style_evolucao_percentual_texto(series):
                 raw_values = df_pivot_pontos['Evolução Pontos Valor']
                 
-                cor_pos = 'color: #a3ffb1; font-weight: bold' # Verde ajustado
-                cor_neg = 'color: #ff9999; font-weight: bold'
-                cor_est = 'color: #b3e6ff; font-weight: bold'
+                cor_pos = 'color: #00FF00; font-weight: bold' # Verde ajustado
+                cor_neg = 'color: #FF0000; font-weight: bold'
+                cor_est = 'color: #00009C; font-weight: bold'
 
                 styles = []
                 for index, val in raw_values.items():
                     if index == 'Total':
-                        style = 'font-weight: bold; background-color: #333333; '
+                        style = 'font-weight: bold; '
                         if val > 0.0001:
-                            styles.append(style + 'color: #a3ffb1')
+                            styles.append(style + 'color: #00FF00')
                         elif val < -0.0001:
-                            styles.append(style + 'color: #ff9999')
+                            styles.append(style + 'color: #FF0000')
                         else:
-                            styles.append(style + 'color: #b3e6ff')
+                            styles.append(style + 'color: #00009C')
                     else:
                         if val > 0.0001:
                             styles.append(cor_pos)
@@ -586,11 +560,11 @@ if not df_dados_original.empty:
     # =======================================================================
     # ITEM 5. Análise de Distribuição Total (Segmento - Pontos e Pedidos no Período Selecionado)
     # =======================================================================
-    st.subheader("5. Análise de Distribuição Total (Segmento - Pontos e Pedidos no Período Selecionado)")
+    st.subheader("5. Distribuição Total (Pontos e Pedidos no Período Selecionado)")
     
     # === NOVO SELETOR DE MÉTRICA ===
     metrica_selecionada = st.selectbox(
-        'Selecione a Métrica para Distribuição Total:',
+        'Selecione a Métrica para Distribuição Total: (Pontos Totais ou Pedidos Únicos)',
         ('Pontos Totais', 'Pedidos Únicos')
     )
     
@@ -631,7 +605,7 @@ if not df_dados_original.empty:
     # ITEM 6. Tendência de Pontos (Pontos Totais) & 6.A Pedidos Únicos por Mês
     # =======================================================================
     
-    st.subheader("6. Análise de Tendência Mensal")
+    st.subheader("6. Tendência Mensal de Pontuação")
     
     # === NOVO SELETOR NO TOPO DO ITEM 6 / 6A ===
     temporada_selecionada_t6 = st.selectbox(
@@ -713,7 +687,7 @@ if not df_dados_original.empty:
         # Estilização: linha Total (fundo escuro e texto branco)
         def style_total_row_pedidos(row):
             if row.name == 'Total':
-                return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
+                return ['font-weight: bold;'] * len(row)
             return [''] * len(row)
             
         # Configuração das colunas para permitir a formatação
@@ -745,7 +719,7 @@ if not df_dados_original.empty:
 
         if meses_detalhe and temporadas_detalhe:
             
-            st.markdown("##### 6 B. Detalhe da Distribuição por Segmento")
+            st.markdown("##### 6 B. Distribuição de Pedidos por Segmento")
             col_sel_mes, col_sel_temp = st.columns(2)
             
             with col_sel_mes:
@@ -907,15 +881,15 @@ if not df_dados_original.empty:
             # Cores para a coluna Evolução %
             if not isinstance(val, (int, float)): return ''
             if val > 0.0001:
-                return 'color: #a3ffb1; font-weight: bold' # Verde ajustado
+                return 'color: #00FF00; font-weight: bold' # Verde ajustado
             elif val < -0.0001:
-                return 'color: #ff9999; font-weight: bold' # Vermelho
-            return 'color: #b3e6ff; font-weight: bold' # Estável/Zero
+                return 'color: #FF0000; font-weight: bold' # Vermelho
+            return 'color: #00009C; font-weight: bold' # Estável/Zero
 
         # Definir a função local de estilo da linha Total (necessário para a lógica do iloc[0])
         def style_total_pontuacao_local(row):
             if row.iloc[0] == 'Total':
-                return ['font-weight: bold; background-color: #333333; color: white'] * len(row)
+                return ['font-weight: bold;'] * len(row)
             return [''] * len(row)
             
         # 10. Exibição da Tabela
@@ -1015,10 +989,10 @@ if not df_dados_original.empty:
         def style_evolucao_loja(val):
             if not isinstance(val, (int, float)): return ''
             if val > 0.0001:
-                return 'color: #a3ffb1; font-weight: bold; background-color: #00800020' # Verde ajustado
+                return 'color: #00FF00; font-weight: bold;' # Verde ajustado
             elif val < -0.0001:
-                return 'color: #ff9999; font-weight: bold; background-color: #ff000020' # Vermelho Claro
-            return 'color: #b3e6ff; font-weight: bold' # Estável/Zero
+                return 'color: #FF0000; font-weight: bold;' # Vermelho Claro
+            return 'color: #00009C; font-weight: bold' # Estável/Zero
 
         df_display_evolucao = df_evolucao_loja.copy()
 
@@ -1073,7 +1047,7 @@ if not df_dados_original.empty:
                 df_rank_quantitativo.style
                     .format({col: formatar_milhar_br for col in df_rank_quantitativo.columns})
                     # Estiliza a linha Total
-                    .apply(lambda row: ['font-weight: bold; background-color: #333333; color: white'] * len(row) if row.name == 'Total' else [''] * len(row), axis=1)
+                    .apply(lambda row: ['font-weight: bold;'] * len(row) if row.name == 'Total' else [''] * len(row), axis=1)
                     .set_properties(**STYLE_TABLE_PROPS, subset=pd.IndexSlice[:, :]), # APLICA ESTILO GLOBAL (TAMANHO + CENTRALIZAÇÃO)
                 use_container_width=True
             )
@@ -1103,7 +1077,7 @@ if not df_dados_original.empty:
                     .apply(style_total_pontuacao_local, axis=1) # Linha Total
                     .applymap(style_evolucao_loja, subset=['Evolução %'])
                     # Estiliza a linha Total
-                    .apply(lambda row: ['font-weight: bold; background-color: #333333; color: white'] * len(row) if row.name == 'Total' else [''] * len(row), axis=1)
+                    .apply(lambda row: ['font-weight: bold;'] * len(row) if row.name == 'Total' else [''] * len(row), axis=1)
                     .format({
                         # USA FUNÇÃO IMPORTADA formatar_milhar_br
                         f'Pontuação {t_anterior_tx}': formatar_milhar_br,
@@ -1143,7 +1117,7 @@ if not df_dados_original.empty:
     # ITEM 8. DESEMPENHO POR PROFISSIONAL E CATEGORIA (AGRUPADO POR CHAVE CONSOLIDADA)
     # =======================================================================
     if COLUNA_ESPECIFICADOR in df_filtrado.columns:
-        st.subheader("8. Desempenho por Entidade/Profissional e Categoria (CONSOLIDADO)")
+        st.subheader("8. Desempenho por Profissional e Categoria")
         
         # === NOVO SELETOR NO TOPO DO ITEM 8 ===
         temporada_selecionada_t8 = st.selectbox(
@@ -1203,13 +1177,13 @@ if not df_dados_original.empty:
                 if pontuacao_anterior > 0:
                     crescimento_formatado = f"{crescimento_raw:.1%}"
                     if crescimento_raw > 0.0001:
-                        evolucao_texto = f"{crescimento_formatado} ↑"
+                        evolucao_texto = f"{crescimento_formatado} ↑↑"
                     elif crescimento_raw < -0.0001:
-                        evolucao_texto = f"{crescimento_formatado} ↓"
+                        evolucao_texto = f"{crescimento_formatado} ↓↓"
                     else:
-                        evolucao_texto = "0.0% ≈"
+                        evolucao_texto = "0.0% ≈≈"
                 elif pontuacao_atual > 0:
-                    evolucao_texto = "+100% ↑"
+                    evolucao_texto = "+100% ↑↑"
                 else:
                     evolucao_texto = "N/A"
                     
@@ -1246,13 +1220,13 @@ if not df_dados_original.empty:
             if pontuacao_total_anterior > 0:
                 crescimento_formatado = f"{crescimento_total_raw:.1%}"
                 if crescimento_total_raw > 0.0001:
-                    evolucao_texto_total = f"{crescimento_formatado} ↑"
+                    evolucao_texto_total = f"{crescimento_formatado} ↑↑"
                 elif crescimento_total_raw < -0.0001:
-                    evolucao_texto_total = f"{crescimento_formatado} ↓"
+                    evolucao_texto_total = f"{crescimento_formatado} ↓↓"
                 else:
-                    evolucao_texto_total = "0.0% ≈"
+                    evolucao_texto_total = "0.0% ≈≈"
             elif pontuacao_total_atual > 0:
-                evolucao_texto_total = "+100% ↑"
+                evolucao_texto_total = "+100% ↑↑"
             else:
                 evolucao_texto_total = "N/A"
                 
@@ -1290,10 +1264,10 @@ if not df_dados_original.empty:
             cores_map_kpi = {
                 'Diamante': '#b3e6ff',
                 'Esmeralda': '#a3ffb1',
-                'Ruby': '#ff9999',
+                'Ruby': "#fa7f7f",
                 'Topázio': '#ffe08a',
-                'Pro': '#d1d1d1',
-                'Total': '#ffffff'
+                'Pro': "#b4adad",
+                'Total': "#610202"
             }
             
             # Cria a lista de colunas para o display
@@ -1340,11 +1314,11 @@ if not df_dados_original.empty:
             def style_kpi_evolucao(crescimento_raw):
                 if isinstance(crescimento_raw, (float, int)):
                     if crescimento_raw > 0.0001:
-                        color = '#a3ffb1'
+                        color = '#00FF00'
                     elif crescimento_raw < -0.0001:
-                        color = '#ff9999'
+                        color = '#FF0000'
                     else:
-                        color = '#b3e6ff'
+                        color = '#00009C'
                     return color
                 return '#d1d1d1'
 
@@ -1465,10 +1439,10 @@ if not df_dados_original.empty:
                 
                 if not isinstance(raw_value, (int, float)): return ''
                 if raw_value > 0.0001:
-                    return 'color: #a3ffb1; font-weight: bold' # Verde ajustado
+                    return 'color: #00FF00; font-weight: bold' # Verde ajustado
                 elif raw_value < -0.0001:
-                    return 'color: #ff9999; font-weight: bold' # Vermelho
-                return 'color: #b3e6ff; font-weight: bold' # Estável/Zero
+                    return 'color: #FF0000; font-weight: bold' # Vermelho
+                return 'color: #00009C; font-weight: bold' # Estável/Zero
             
             # Formatar a coluna Pontuação
             df_tabela_exibicao['Pontuação'] = df_tabela_exibicao['Pontuação'].apply(
@@ -1504,7 +1478,7 @@ if not df_dados_original.empty:
                 st.markdown("---")
 
 
-                st.subheader("9. Análise de Novos Cadastrados (Aquisição e Ativação por Coorte)")
+                st.subheader("9. Novos Cadastrados (Comprando e Cadastrados por Temporada)")
                 
                 # Filtra apenas os novos cadastrados no período e filtros de Segmento/Loja
                 # O df_filtrado agora contém a nova lógica de Novo_Cadastrado (coorte)
@@ -1549,7 +1523,7 @@ if not df_dados_original.empty:
                         
                 
                 # --- 9 B. TABELA PIVÔ: Clientes Novos por Mês e Temporada + EVOLUÇÃO (QUALITATIVA) ---
-                st.markdown("##### 9 A. Contagem de Novos Profissionais Pontuados por Mês e Temporada")
+                st.markdown("##### 9 A. Contagem de Novos Cadastrados Pontuados por Mês e Temporada")
 
                 if 'Mês_Exibicao' in df_novos_filtrados.columns:
                     
@@ -1568,20 +1542,20 @@ if not df_dados_original.empty:
 
                         raw_values = df_pivot_novos['Evolução Qualitativa Valor']
                         
-                        cor_pos = 'color: #a3ffb1; font-weight: bold' # Verde ajustado
-                        cor_neg = 'color: #ff9999; font-weight: bold'
-                        cor_est = 'color: #b3e6ff; font-weight: bold'
+                        cor_pos = 'color: #00FF00; font-weight: bold' # Verde ajustado
+                        cor_neg = 'color: #FF0000; font-weight: bold'
+                        cor_est = 'color: #00009C; font-weight: bold'
 
                         styles = []
                         for index, val in raw_values.items():
                             if index == 'Total':
-                                style = 'font-weight: bold; background-color: #333333; '
+                                style = 'font-weight: bold; '
                                 if val == 1:
-                                    styles.append(style + 'color: #a3ffb1')
+                                    styles.append(style + 'color: #00FF00')
                                 elif val == -1:
-                                    styles.append(style + 'color: #ff9999')
+                                    styles.append(style + 'color: #FF0000')
                                 else:
-                                    styles.append(style + 'color: #b3e6ff')
+                                    styles.append(style + 'color: #00009C')
                             elif val == 1:
                                 styles.append(cor_pos)
                             elif val == -1:
@@ -1615,7 +1589,7 @@ if not df_dados_original.empty:
                     # --- 9 B. Tabela de Nomes (Detalhe dos Clientes Novos - Antigo 9 C) ---
                     # --------------------------------------------------------------------------
                     st.markdown("---")
-                    st.markdown("##### 9 B. Nomes dos Profissionais Ativados na Coorte (Com Compra na Temporada de Cadastro)")
+                    st.markdown("##### 9 B. Nomes dos Profissionais Ativados (Com Compra na Temporada de Cadastro)")
                     
                     # Campo de Pesquisa Compartilhado (Item 9B e 9C)
                     termo_pesquisa_9 = st.text_input(
@@ -1670,7 +1644,7 @@ if not df_dados_original.empty:
                         # Estilização do 'Já Comprou'
                         def style_ja_comprou(val):
                             if val == 'Sim':
-                                return 'color: #a3ffb1; font-weight: bold; background-color: #00800020'
+                                return 'color: #00FF00; font-weight: bold;'
                             return '' # Não deve ter "Não" nesta tabela
                         
                         if not df_display_9B.empty:
@@ -1691,7 +1665,7 @@ if not df_dados_original.empty:
                     # --------------------------------------------------------------------------
                     # --- NOVO ITEM 9 C. Tabela de Clientes Cadastrados (Não Ativados) ---
                     # --------------------------------------------------------------------------
-                    st.markdown("##### 9 C. Status de Ativação dos Profissionais Cadastrados (Base Cadastros Originais)")
+                    st.markdown("##### 9 C. Status de Profissionais Cadastrados (Base Cadastros Originais)")
                     
                     # 1. Prepara a lista de CPFs/CNPJs Ativados na Coorte (os que apareceram no 9B)
                     clientes_ativados_coorte_limpos = set(df_ativados['CNPJ_CPF_LIMPO'].unique() if 'df_ativados' in locals() and not df_ativados.empty else [])
@@ -1731,9 +1705,9 @@ if not df_dados_original.empty:
                         # Estilização do 'Já Comprou' (Sim = Verde, Não = Vermelho)
                         def style_ja_comprou_9C(val):
                             if val == 'Sim':
-                                return 'color: #a3ffb1; font-weight: bold; background-color: #00800020'
+                                return 'color: #00FF00; font-weight: bold;'
                             elif val == 'Não':
-                                return 'color: #ff9999; font-weight: bold; background-color: #ff000020'
+                                return 'color: #FF0000; font-weight: bold;'
                             return ''
                         
                         if not df_display_9C.empty:
@@ -1757,7 +1731,7 @@ if not df_dados_original.empty:
                     st.markdown("---")
 
                     # 1. Tabela de Resumo Anual (Item 10A) - ATENDE FILTROS DE Segmento/Loja
-                    st.subheader("10. Análise de Clientes Ativos vs Inativos (Retenção)")
+                    st.subheader("10. Clientes Ativos vs Inativos")
                     
                     # CRÍTICO: Recalcula a retenção APENAS para a Entidade/Segmento selecionado - USA FUNÇÃO IMPORTADA
                     df_anual_metricas, clientes_historicos_na_entidade = calcular_clientes_ativos_inativos(
@@ -1773,11 +1747,11 @@ if not df_dados_original.empty:
                     def style_percentual_ativo(val):
                         if not isinstance(val, (float, int)): return ''
                         if val >= 0.5: # 50% ou mais de Ativos
-                            return 'color: #a3ffb1; font-weight: bold; background-color: #00800020' # Verde ajustado
+                            return 'color: #00FF00; font-weight: bold;' # Verde ajustado
                         elif val > 0:
-                            return 'color: #ffe08a; font-weight: bold; background-color: #ffd70020'
+                            return 'color: #FF0000; font-weight: bold;'
                         else:
-                            return 'color: #ff9999; font-weight: bold; background-color: #ff000020'
+                            return 'color: #00009C; font-weight: bold;'
                             
                     # Aplicando a interatividade e estilização na tabela A
                     colunas_config = {
@@ -1964,9 +1938,9 @@ if not df_dados_original.empty:
                     # Função de estilização para Status
                     def style_status_row(row):
                         if row['Status'] == 'ATIVO':
-                            return ['color: #a3ffb1; font-weight: bold; background-color: #00800020'] * len(row) # Verde ajustado
+                            return ['color: #00FF00; font-weight: bold;'] * len(row) # Verde ajustado
                         elif row['Status'] == 'INATIVO':
-                            return ['color: #ff9999; font-weight: bold; background-color: #ff000020'] * len(row)
+                            return ['color: #FF0000; font-weight: bold;'] * len(row)
                         return [''] * len(row)
 
                     if not df_tabela_detalhe_exibicao.empty:
@@ -2016,11 +1990,11 @@ if not df_dados_original.empty:
                 if not isinstance(val, (int, float)):
                     return ''
                 if val < 0:
-                    return 'color: #ff9999; font-weight: bold; background-color: #ff000020'
+                    return 'color: #FF0000; font-weight: bold;'
                 elif val > 0:
-                    return 'color: #a3ffb1; font-weight: bold; background-color: #00800020' # Verde ajustado
+                    return 'color: #00FF00; font-weight: bold;' # Verde ajustado
                 else:
-                    return 'color: #b3e6ff; font-weight: bold'
+                    return 'color: #00009C; font-weight: bold'
             
             # Renomear colunas para o Português para exibição (necessário para o st.dataframe)
             col_t_anterior = f'Rank - T{t_anterior_num}'
